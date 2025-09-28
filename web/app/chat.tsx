@@ -1,109 +1,43 @@
 "use client";
 
-import { Message } from "./types";
+import { useChat } from "../hooks/useChat";
 import {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
-  useEffect,
+  useCallback,
   useState,
 } from "react";
 
 export function Chat() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, status, error, sendMessage } = useChat();
   const [input, setInput] = useState("what is today weather in taipai");
-  const [activeStream, setActiveStream] = useState<EventSource | null>(null);
-
-  useEffect(() => {
-    return () => {
-      activeStream?.close();
-    };
-  }, [activeStream]);
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(event.target.value);
   };
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    // TODO: need to check if this is best practice...maybe should use input
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
     }
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
 
-    const question = input.trim();
-    if (!question || activeStream) {
-      return;
-    }
-
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      content: question,
-      from: "user",
-    };
-    const assistantMessageId = crypto.randomUUID();
-
-    setMessages((prev) => [
-      ...prev,
-      userMessage,
-      { id: assistantMessageId, content: "", from: "llm" },
-    ]);
-    setInput("");
-
-    const stream = new EventSource(
-      `${process.env.NEXT_PUBLIC_CHAT_BASE_URL}/chat?question=${encodeURIComponent(question)}`
-    );
-    setActiveStream(stream);
-
-    const updateAssistantMessage = (transform: (content: string) => string) => {
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === assistantMessageId
-            ? { ...message, content: transform(message.content) }
-            : message
-        )
-      );
-    };
-
-    const closeStream = () => {
-      stream.close();
-      setActiveStream((current) => (current === stream ? null : current));
-    };
-
-    stream.addEventListener("message", (event: MessageEvent) => {
-      try {
-        const payload = JSON.parse(event.data) as { message?: string };
-        if (!payload.message) {
-          return;
-        }
-        updateAssistantMessage((current) => current + payload.message);
-      } catch (error) {
-        console.error("Failed to parse SSE message", error);
+      const question = input.trim();
+      if (!question || status === "streaming") {
+        return;
       }
-    });
 
-    stream.addEventListener("end", (event: MessageEvent) => {
-      try {
-        const payload = JSON.parse(event.data) as { message?: string };
-        if (payload.message && payload.message !== "[DONE]") {
-          updateAssistantMessage((current) => current + payload.message);
-        }
-      } catch (error) {
-        console.error("Failed to parse SSE end message", error);
-      } finally {
-        closeStream();
-      }
-    });
-
-    stream.addEventListener("error", (event: MessageEvent) => {
-      console.error("SSE error", event);
-      closeStream();
-    });
-  };
+      sendMessage({ text: question });
+      setInput("");
+    },
+    [input, sendMessage, status]
+  );
 
   return (
     <main className="max-w-[1200px] mx-auto px-4">
@@ -113,6 +47,7 @@ export function Chat() {
             <div>{message.content}</div>
           </div>
         ))}
+        {error ? <div className="text-red-400">{error}</div> : null}
       </div>
       <form
         className="fixed max-w-[1000px] mx-auto bottom-0 left-0 right-0 p-4"
@@ -127,10 +62,13 @@ export function Chat() {
           onChange={handleInputChange}
           onKeyDown={handleInputKeyDown}
           autoFocus
-          disabled={Boolean(activeStream)}
+          disabled={status === "streaming"}
         />
-        <button type="submit" disabled={Boolean(activeStream) || !input.trim()}>
-          {activeStream ? "Sending..." : "Send"}
+        <button
+          type="submit"
+          disabled={status === "streaming" || !input.trim()}
+        >
+          {status === "streaming" ? "Sending..." : "Send"}
         </button>
       </form>
     </main>

@@ -1,6 +1,8 @@
 import os
 from typing import AsyncIterator
+
 from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import BaseTextChatMessage
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_core.tools import FunctionTool
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -32,9 +34,13 @@ report_agent = AssistantAgent(
 
 team = RoundRobinGroupChat([search_agent, report_agent], max_turns=3)
 
+
 async def ask(question: str) -> AsyncIterator[str]:
     """Stream responses from the agent for the provided question."""
 
     stream = team.run_stream(task=question)
     async for message in stream:
-      yield message.to_text()
+        if isinstance(message, BaseTextChatMessage):
+            if message.source == "user":
+                continue
+            yield message.to_text()
