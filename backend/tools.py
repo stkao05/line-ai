@@ -1,38 +1,33 @@
+import asyncio
 import os
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 
+api_key = os.getenv("GOOGLE_API_KEY")
+search_engine_id = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
 
-def google_search(query: str, num_results: int = 2, max_chars: int = 500) -> list:
-    api_key = os.getenv("GOOGLE_API_KEY")
-    search_engine_id = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
+if not api_key or not search_engine_id:
+    raise ValueError("API key or Search Engine ID not found in environment variables")
 
-    if not api_key or not search_engine_id:
-        raise ValueError(
-            "API key or Search Engine ID not found in environment variables"
-        )
 
-    url = "https://customsearch.googleapis.com/customsearch/v1"
-    params = {
-        "key": str(api_key),
-        "cx": str(search_engine_id),
-        "q": str(query),
-        "num": str(num_results),
-    }
+async def google_search(query: str, num_results: int, max_chars: int) -> list:
+    """Execute a Google search and fetch result page bodies concurrently."""
 
-    response = requests.get(url, params=params)
+    timeout = httpx.Timeout(2.0)
 
-    if response.status_code != 200:
-        print(response.json())
-        raise Exception(f"Error in API request: {response.status_code}")
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
 
-    results = response.json().get("items", [])
+        async def _get_page_content(url: str) -> str | None:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPStatusError:
+                return None
+            except httpx.HTTPError:
+                return None
 
-    def get_page_content(url: str) -> str:
-        try:
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.content, "html.parser")
+            soup = BeautifulSoup(response.text, "html.parser")
             text = soup.get_text(separator=" ", strip=True)
             words = text.split()
             content = ""
@@ -41,20 +36,31 @@ def google_search(query: str, num_results: int = 2, max_chars: int = 500) -> lis
                     break
                 content += " " + word
             return content.strip()
-        except Exception as e:
-            print(f"Error fetching {url}: {str(e)}")
-            return ""
 
-    enriched_results = []
-    for item in results:
-        body = get_page_content(item["link"])
-        enriched_results.append(
-            {
+        url = "https://customsearch.googleapis.com/customsearch/v1"
+        params = {
+            "key": str(api_key),
+            "cx": str(search_engine_id),
+            "q": str(query),
+            "num": str(num_results),
+        }
+
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("items", [])
+
+        async def _enrich(item: dict) -> dict | None:
+            body = await _get_page_content(item["link"])
+            if body is None:
+                return None
+            return {
                 "title": item["title"],
                 "link": item["link"],
                 "snippet": item["snippet"],
                 "body": body,
             }
-        )
 
-    return enriched_results
+        tasks = [_enrich(item) for item in results]
+        enriched = await asyncio.gather(*tasks)
+        return [item for item in enriched if item is not None]
