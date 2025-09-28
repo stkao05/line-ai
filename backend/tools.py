@@ -1,15 +1,7 @@
 import os
-import time
 
 import requests
-from autogen_agentchat.agents import AssistantAgent
-from autogen_agentchat.conditions import TextMentionTermination
-from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_agentchat.ui import Console
-from autogen_core.tools import FunctionTool
-from autogen_ext.models.openai import OpenAIChatCompletionClient
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 
 
 def google_search(query: str, num_results: int = 2, max_chars: int = 500) -> list:

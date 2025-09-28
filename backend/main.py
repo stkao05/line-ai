@@ -1,12 +1,25 @@
 import json
+import os
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from agent import ask
-
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 app = FastAPI()
+
+
+cors_origin = os.getenv("CORS_ALLOW_ORIGIN")
+print("CORS_ALLOW_ORIGIN", cors_origin)
+if cors_origin:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[cors_origin],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 @app.get("/")
