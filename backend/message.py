@@ -1,170 +1,111 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, List, Literal, Optional, Union
+from enum import Enum
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-
-class LinkPreview(BaseModel):
-    id: Optional[str] = None
-    title: str
-    url: str
-    snippet: Optional[str] = None
-    favicon_url: Optional[str] = None
+Snowflake = Annotated[str, Field(min_length=1)]
+ISO8601 = Annotated[str, Field(min_length=1)]
 
 
-# ---------------------------
-# Envelope base (abstract)
-# ---------------------------
+class SseEvent(str, Enum):
+    TURN_START = "turn.start"
+    TURN_DONE = "turn.done"
+    ANSWER_DELTA = "answer.delta"
+    ANSWER_DONE = "answer.done"
+    AGENT_STATUS = "agent.status"
 
 
-class EventBase(BaseModel):
-    """Common envelope for all events."""
-
-    type: str  # overridden by Literal[...] in concrete subclasses
-    request_id: str
-    seq: int
-    ts: datetime
+class TurnStatus(str, Enum):
+    OK = "ok"
+    ERROR = "error"
 
 
-# ---------------------------
-# Payload models
-# ---------------------------
+class AgentStage(str, Enum):
+    PLANNING = "planning"
+    RETRIEVING = "retrieving"
+    WRITING = "writing"
 
 
-class EmptyPayload(BaseModel):
+class BaseMeta(BaseModel):
+    conversation_id: Snowflake
+    turn_id: Snowflake
+    id: Snowflake
+    ts: ISO8601
+
     model_config = ConfigDict(extra="forbid")
 
 
-class SearchStartedPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    query: str
-    fetch: int = Field(ge=1, description="Number of results to fetch")
-
-
-class SearchResultsPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    results: List[LinkPreview]
-
-
-class AnswerDeltaPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    delta: str
-
-
-class AnswerFinalPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class UserMessage(BaseModel):
     text: str
-    citations: Optional[List[LinkPreview]] = None
 
-
-class ErrorPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    code: str
-    message: str
-    retryable: Optional[bool] = None
+
+class TurnStart(BaseMeta):
+    user_message: UserMessage
 
 
-class CompletePayload(BaseModel):
+class TurnDone(BaseMeta):
+    status: TurnStatus
+
+
+class AnswerDelta(BaseMeta):
+    text: str
+
+
+class AnswerDone(BaseMeta):
+    final_text_hash: str | None = None
+
+
+class AgentStatus(BaseMeta):
+    stage: AgentStage
+    detail: str | None = None
+
+
+class TurnStartMessage(BaseModel):
+    event: Literal[SseEvent.TURN_START]
+    data: TurnStart
+
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["success", "error", "cancelled"]
-    usage: Optional[dict] = Field(
-        default=None,
-        description="Optional usage stats, e.g. {'input_tokens': 123, 'output_tokens': 456}",
-    )
-    latency_ms: Optional[int] = None
+
+class TurnDoneMessage(BaseModel):
+    event: Literal[SseEvent.TURN_DONE]
+    data: TurnDone
+
+    model_config = ConfigDict(extra="forbid")
 
 
-# ---------------------------
-# Concrete event models
-# ---------------------------
+class AnswerDeltaMessage(BaseModel):
+    event: Literal[SseEvent.ANSWER_DELTA]
+    data: AnswerDelta
+
+    model_config = ConfigDict(extra="forbid")
 
 
-class InitEvent(EventBase):
-    type: Literal["init"]
-    payload: EmptyPayload = Field(default_factory=EmptyPayload)
+class AnswerDoneMessage(BaseModel):
+    event: Literal[SseEvent.ANSWER_DONE]
+    data: AnswerDone
+
+    model_config = ConfigDict(extra="forbid")
 
 
-class SearchStartedEvent(EventBase):
-    type: Literal["search.started"]
-    payload: SearchStartedPayload
+class AgentStatusMessage(BaseModel):
+    event: Literal[SseEvent.AGENT_STATUS]
+    data: AgentStatus
+
+    model_config = ConfigDict(extra="forbid")
 
 
-class SearchResultsEvent(EventBase):
-    type: Literal["search.results"]
-    payload: SearchResultsPayload
-
-
-class AnswerDeltaEvent(EventBase):
-    type: Literal["answer.delta"]
-    payload: AnswerDeltaPayload
-
-
-class AnswerFinalEvent(EventBase):
-    type: Literal["answer.final"]
-    payload: AnswerFinalPayload
-
-
-class ErrorEvent(EventBase):
-    type: Literal["error"]
-    payload: ErrorPayload
-
-
-class CompleteEvent(EventBase):
-    type: Literal["complete"]
-    payload: CompletePayload
-
-
-# ---------------------------
-# Discriminated union
-# ---------------------------
-
-StreamEvent = Annotated[
-    Union[
-        InitEvent,
-        SearchStartedEvent,
-        SearchResultsEvent,
-        AnswerDeltaEvent,
-        AnswerFinalEvent,
-        ErrorEvent,
-        CompleteEvent,
-    ],
-    Field(discriminator="type"),
+SseMessage = Union[
+    TurnStartMessage,
+    TurnDoneMessage,
+    AnswerDeltaMessage,
+    AnswerDoneMessage,
+    AgentStatusMessage,
 ]
 
-# A TypeAdapter is convenient for (de)serializing top-level unions:
-StreamEventAdapter = TypeAdapter(StreamEvent)
 
-
-# ---------------------------
-# Request model (for POST /v1/qa/stream)
-# ---------------------------
-
-
-class QuestionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    query: str
-    fetch: int = Field(default=5, ge=1)
-
-
-# ---------------------------
-# Helpers
-# ---------------------------
-
-
-def parse_ndjson_line(line: str) -> StreamEvent:
-    """Validate and parse a single NDJSON line into a concrete event model."""
-    return StreamEventAdapter.validate_json(line)
-
-
-def dump_event(event: StreamEvent) -> str:
-    """Serialize an event to a JSON string (ready to send as an NDJSON line)."""
-    return StreamEventAdapter.dump_json(event)
+SseMessageAdapter = TypeAdapter(SseMessage)

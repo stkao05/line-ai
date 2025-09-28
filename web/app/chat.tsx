@@ -42,11 +42,27 @@ export function Chat() {
   return (
     <main className="max-w-[1200px] mx-auto px-4">
       <div>
-        {messages.map((message) => (
-          <div key={message.id}>
-            <div>{message.content}</div>
-          </div>
-        ))}
+        {messages.map((message) => {
+          const key = `${message.turn_id}:${message.type}`;
+
+          if (message.type === "agent.status") {
+            return (
+              <div key={key} className="text-sm text-zinc-400">
+                <span className="uppercase tracking-wide">{message.stage}</span>
+                {message.detail ? <span>: {message.detail}</span> : null}
+              </div>
+            );
+          }
+
+          const author = message.type === "user.message" ? "You" : "Assistant";
+          return (
+            <div key={key}>
+              <div>
+                <span className="font-semibold">{author}:</span> {message.content}
+              </div>
+            </div>
+          );
+        })}
         {error ? <div className="text-red-400">{error}</div> : null}
       </div>
       <form
