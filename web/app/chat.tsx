@@ -8,6 +8,8 @@ import {
   useCallback,
   useState,
 } from "react";
+import { Turn } from "./turn";
+import { SendHorizonal } from "lucide-react";
 
 export function Chat() {
   const { messages, status, error, sendMessage } = useChat();
@@ -40,7 +42,10 @@ export function Chat() {
   );
 
   return (
-    <main className="max-w-[1200px] mx-auto px-4">
+    <main className="max-w-[1000px] mx-auto pb-[100px]">
+      <div>
+        <Turn />
+      </div>
       <div>
         {messages.map((message) => {
           const key = `${message.turn_id}:${message.type}`;
@@ -58,35 +63,40 @@ export function Chat() {
           return (
             <div key={key}>
               <div>
-                <span className="font-semibold">{author}:</span> {message.content}
+                <span className="font-semibold">{author}:</span>{" "}
+                {message.content}
               </div>
             </div>
           );
         })}
         {error ? <div className="text-red-400">{error}</div> : null}
       </div>
-      <form
-        className="fixed max-w-[1000px] mx-auto bottom-0 left-0 right-0 p-4"
-        onSubmit={handleSubmit}
-      >
-        <textarea
-          className="bg-zinc-800 w-full border-1 border-zinc-900 rounded-2xl p-8 focus:outline-none"
-          name="message"
-          placeholder="Message"
-          rows={1}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleInputKeyDown}
-          autoFocus
-          disabled={status === "streaming"}
-        />
-        <button
-          type="submit"
-          disabled={status === "streaming" || !input.trim()}
+      <div className="fixed bottom-4 w-full max-w-[1000px]">
+        <form
+          className="flex max-w-[1000px] items-center gap-3 rounded-3xl border border-zinc-800 bg-zinc-950/60 p-4 shadow-xl shadow-black/20"
+          onSubmit={handleSubmit}
         >
-          {status === "streaming" ? "Sending..." : "Send"}
-        </button>
-      </form>
+          <textarea
+            className="w-full resize-none bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+            name="message"
+            placeholder="Message"
+            rows={1}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
+            autoFocus
+            disabled={status === "streaming"}
+          />
+          <button
+            type="submit"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+            disabled={status === "streaming" || !input.trim()}
+            aria-label={status === "streaming" ? "Sending" : "Send message"}
+          >
+            <SendHorizonal size={16} />
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
