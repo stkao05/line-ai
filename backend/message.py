@@ -1,111 +1,180 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal, Union
+from typing import Literal, Sequence, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, HttpUrl, TypeAdapter
 
-Snowflake = Annotated[str, Field(min_length=1)]
-ISO8601 = Annotated[str, Field(min_length=1)]
+
+class Page(BaseModel):
+    """Normalized representation of a fetched page."""
+
+    url: HttpUrl
+    title: str | None = None
+    snippet: str | None = None
+    favicon: HttpUrl | None = None
+
+
+class BaseStreamMessage(BaseModel):
+    """Common fields shared by all streaming messages."""
+
+    type: str
+
+    model_config = {
+        "extra": "forbid",
+        "populate_by_name": True,
+    }
+
+
+class SearchStartMessage(BaseStreamMessage):
+    type: Literal["search.start"]
+    query: str
+
+
+class SearchEndMessage(BaseStreamMessage):
+    type: Literal["search.end"]
+    query: str
+    results: int
+
+
+class RankStartMessage(BaseStreamMessage):
+    type: Literal["rank.start"]
+
+
+class RankEndMessage(BaseStreamMessage):
+    type: Literal["rank.end"]
+    pages: Sequence[Page]
+
+
+class FetchStartMessage(BaseStreamMessage):
+    type: Literal["fetch.start"]
+    pages: Sequence[Page]
+
+
+class FetchEndMessage(BaseStreamMessage):
+    type: Literal["fetch.end"]
+    pages: Sequence[Page] | None = None
+
+
+class AnswerDeltaMessage(BaseStreamMessage):
+    type: Literal["answer-delta"]
+    delta: str
+
+
+class AnswerMessage(BaseStreamMessage):
+    type: Literal["answer"]
+    answer: str
+    citations: Sequence[Page] | None = None
+
+
+StreamMessage: TypeAlias = (
+    SearchStartMessage
+    | SearchEndMessage
+    | RankStartMessage
+    | RankEndMessage
+    | FetchStartMessage
+    | FetchEndMessage
+    | AnswerDeltaMessage
+    | AnswerMessage
+)
+
+StreamMessageAdapter = TypeAdapter(StreamMessage)
 
 
 class SseEvent(str, Enum):
-    TURN_START = "turn.start"
-    TURN_DONE = "turn.done"
-    ANSWER_DELTA = "answer.delta"
-    ANSWER_DONE = "answer.done"
-    AGENT_STATUS = "agent.status"
+    """Server-sent event names surfaced by the chat endpoint."""
 
-
-class TurnStatus(str, Enum):
-    OK = "ok"
+    MESSAGE = "message"
     ERROR = "error"
+    END = "end"
 
 
-class AgentStage(str, Enum):
-    PLANNING = "planning"
-    RETRIEVING = "retrieving"
-    WRITING = "writing"
+class ChatStreamEnvelope(BaseModel):
+    """Primary chat event wrapping a streamed message payload."""
+
+    event: Literal[SseEvent.MESSAGE]
+    data: StreamMessage
 
 
-class BaseMeta(BaseModel):
-    conversation_id: Snowflake
-    turn_id: Snowflake
-    id: Snowflake
-    ts: ISO8601
+class ChatErrorPayload(BaseModel):
+    """Error payload sent when the stream encounters an exception."""
 
-    model_config = ConfigDict(extra="forbid")
+    error: str
 
 
-class UserMessage(BaseModel):
-    text: str
+class ChatErrorEnvelope(BaseModel):
+    """Server-sent event dispatched when an unrecoverable error occurs."""
 
-    model_config = ConfigDict(extra="forbid")
-
-
-class TurnStart(BaseMeta):
-    user_message: UserMessage
+    event: Literal[SseEvent.ERROR]
+    data: ChatErrorPayload
 
 
-class TurnDone(BaseMeta):
-    status: TurnStatus
+class ChatDonePayload(BaseModel):
+    """Payload emitted when the stream has completed successfully."""
+
+    message: Literal["[DONE]"]
 
 
-class AnswerDelta(BaseMeta):
-    text: str
+class ChatDoneEnvelope(BaseModel):
+    """Server-sent event dispatched when streaming is finished."""
+
+    event: Literal[SseEvent.END]
+    data: ChatDonePayload
 
 
-class AnswerDone(BaseMeta):
-    final_text_hash: str | None = None
+ChatSseEvent: TypeAlias = ChatStreamEnvelope | ChatErrorEnvelope | ChatDoneEnvelope
+
+ChatSseEventAdapter = TypeAdapter(ChatSseEvent)
 
 
-class AgentStatus(BaseMeta):
-    stage: AgentStage
-    detail: str | None = None
+class SseMessageAdapter:
+    """Light-weight utilities for serialising chat SSE messages."""
+
+    _stream_adapter = StreamMessageAdapter
+    _sse_adapter = ChatSseEventAdapter
+
+    @classmethod
+    def dump_python(cls, message: StreamMessage, **kwargs) -> dict[str, object]:
+        """Serialize a streamed chat message into plain Python primitives."""
+
+        return cls._stream_adapter.dump_python(message, **kwargs)
+
+    @classmethod
+    def openapi_schema(cls) -> tuple[dict[str, object], dict[str, object]]:
+        """Return the schema for chat SSE envelopes and their component models."""
+
+        schema = cls._sse_adapter.json_schema(
+            ref_template="#/components/schemas/{model}"
+        )
+
+        definitions: dict[str, object] = {}
+        for key in ("definitions", "$defs"):
+            maybe_defs = schema.pop(key, None)
+            if maybe_defs:
+                definitions = maybe_defs
+                break
+
+        return schema, definitions
 
 
-class TurnStartMessage(BaseModel):
-    event: Literal[SseEvent.TURN_START]
-    data: TurnStart
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class TurnDoneMessage(BaseModel):
-    event: Literal[SseEvent.TURN_DONE]
-    data: TurnDone
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class AnswerDeltaMessage(BaseModel):
-    event: Literal[SseEvent.ANSWER_DELTA]
-    data: AnswerDelta
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class AnswerDoneMessage(BaseModel):
-    event: Literal[SseEvent.ANSWER_DONE]
-    data: AnswerDone
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class AgentStatusMessage(BaseModel):
-    event: Literal[SseEvent.AGENT_STATUS]
-    data: AgentStatus
-
-    model_config = ConfigDict(extra="forbid")
-
-
-SseMessage = Union[
-    TurnStartMessage,
-    TurnDoneMessage,
-    AnswerDeltaMessage,
-    AnswerDoneMessage,
-    AgentStatusMessage,
+__all__ = [
+    "AnswerDeltaMessage",
+    "AnswerMessage",
+    "ChatDoneEnvelope",
+    "ChatDonePayload",
+    "ChatErrorEnvelope",
+    "ChatErrorPayload",
+    "ChatStreamEnvelope",
+    "ChatSseEvent",
+    "FetchEndMessage",
+    "FetchStartMessage",
+    "Page",
+    "RankEndMessage",
+    "RankStartMessage",
+    "SearchEndMessage",
+    "SearchStartMessage",
+    "SseEvent",
+    "SseMessageAdapter",
+    "StreamMessage",
+    "StreamMessageAdapter",
 ]
-
-
-SseMessageAdapter = TypeAdapter(SseMessage)

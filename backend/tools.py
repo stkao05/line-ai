@@ -1,66 +1,112 @@
-import asyncio
 import os
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
-api_key = os.getenv("GOOGLE_API_KEY")
-search_engine_id = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
+serper_api_key = os.getenv("SERPER_API_KEY")
 
-if not api_key or not search_engine_id:
-    raise ValueError("API key or Search Engine ID not found in environment variables")
+if not serper_api_key:
+    raise ValueError("SERPER_API_KEY not found in environment variables")
 
 
-async def google_search(query: str, num_results: int, max_chars: int) -> list:
-    """Execute a Google search and fetch result page bodies concurrently."""
+def _build_favicon_url(link: str) -> str | None:
+    """Construct a Google favicon service URL for the link's domain."""
 
-    timeout = httpx.Timeout(2.0)
+    try:
+        parsed = urlparse(link)
+    except ValueError:
+        return None
+
+    if not parsed.scheme or not parsed.netloc:
+        return None
+
+    domain_url = f"{parsed.scheme}://{parsed.netloc}"
+    return f"https://www.google.com/s2/favicons?sz=64&domain_url={domain_url}"
+
+
+async def google_search(query: str, num_results: int) -> list:
+    timeout = httpx.Timeout(4.0)
+    headers = {
+        "X-API-KEY": serper_api_key,
+        "Content-Type": "application/json",
+    }
+    requested = min(num_results, 20)
 
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        try:
+            response = await client.post(
+                "https://google.serper.dev/search",
+                headers=headers,
+                json={"q": query, "num": requested},
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ValueError(f"Serper API request failed: {exc}") from exc
 
-        async def _get_page_content(url: str) -> str | None:
-            try:
-                response = await client.get(url)
-                response.raise_for_status()
-            except httpx.HTTPStatusError:
-                return None
-            except httpx.HTTPError:
-                return None
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            text = soup.get_text(separator=" ", strip=True)
-            words = text.split()
-            content = ""
-            for word in words:
-                if len(content) + len(word) + 1 > max_chars:
-                    break
-                content += " " + word
-            return content.strip()
-
-        url = "https://customsearch.googleapis.com/customsearch/v1"
-        params = {
-            "key": str(api_key),
-            "cx": str(search_engine_id),
-            "q": str(query),
-            "num": str(num_results),
-        }
-
-        response = await client.get(url, params=params)
-        response.raise_for_status()
         payload = response.json()
-        results = payload.get("items", [])
 
-        async def _enrich(item: dict) -> dict | None:
-            body = await _get_page_content(item["link"])
-            if body is None:
-                return None
+    organic_results = payload.get("organic", []) or []
+    news_results = payload.get("news", []) or []
+    mixed_results = organic_results + news_results
+
+    collected: list[dict] = []
+    for item in mixed_results:
+        link = item.get("link")
+        if not link:
+            continue
+        snippet = item.get("snippet") or item.get("snippetHighlighted") or ""
+        snippet = snippet.strip() or "Snippet not available."
+        favicon = item.get("favicon") or _build_favicon_url(link)
+        collected.append(
+            {
+                "title": item.get("title") or link,
+                "link": link,
+                "snippet": snippet,
+                "favicon": favicon,
+            }
+        )
+        if len(collected) >= num_results:
+            break
+
+    return collected
+
+
+async def fetch_page_content(url: str, max_chars: int) -> dict:
+    """Fetch and trim textual content from a single web page."""
+
+    timeout = httpx.Timeout(4.0)
+
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
             return {
-                "title": item["title"],
-                "link": item["link"],
-                "snippet": item["snippet"],
-                "body": body,
+                "url": url,
+                "title": url,
+                "content": f"ERROR: failed to fetch page content ({exc})",
             }
 
-        tasks = [_enrich(item) for item in results]
-        enriched = await asyncio.gather(*tasks)
-        return [item for item in enriched if item is not None]
+    soup = BeautifulSoup(response.text, "html.parser")
+    text = soup.get_text(separator=" ", strip=True)
+    words = text.split()
+    content_parts: list[str] = []
+    current_len = 0
+
+    for word in words:
+        additional = len(word) + (1 if content_parts else 0)
+        if current_len + additional > max_chars:
+            break
+        content_parts.append(word)
+        current_len += additional
+
+    trimmed_content = " ".join(content_parts)
+    title_tag = soup.find("title")
+    page_title = title_tag.text.strip() if title_tag and title_tag.text else url
+
+    return {
+        "url": url,
+        "title": page_title,
+        "content": trimmed_content,
+    }
