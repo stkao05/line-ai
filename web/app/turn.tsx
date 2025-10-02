@@ -4,9 +4,67 @@ export type AgentWorkflowStatus = "complete" | "active" | "pending";
 
 export type AgentWorkflowStep = {
   title: string;
-  detail: string;
+  detail: ReactNode;
   status: AgentWorkflowStatus;
 };
+
+export type PageSummary = {
+  url: string;
+  title?: string | null;
+  snippet?: string | null;
+  favicon?: string | null;
+};
+
+type SearchStartMessage = {
+  type: "search.start";
+  query: string;
+};
+
+type SearchEndMessage = {
+  type: "search.end";
+  query: string;
+  results: number;
+};
+
+type RankStartMessage = {
+  type: "rank.start";
+};
+
+type RankEndMessage = {
+  type: "rank.end";
+  pages: PageSummary[];
+};
+
+type FetchStartMessage = {
+  type: "fetch.start";
+  pages: PageSummary[];
+};
+
+type FetchEndMessage = {
+  type: "fetch.end";
+  pages?: PageSummary[] | null;
+};
+
+type AnswerDeltaMessage = {
+  type: "answer-delta";
+  delta: string;
+};
+
+type AnswerMessage = {
+  type: "answer";
+  answer: string;
+  citations?: PageSummary[] | null;
+};
+
+export type StreamMessage =
+  | SearchStartMessage
+  | SearchEndMessage
+  | RankStartMessage
+  | RankEndMessage
+  | FetchStartMessage
+  | FetchEndMessage
+  | AnswerDeltaMessage
+  | AnswerMessage;
 
 export type TurnReference = {
   title: string;
@@ -16,78 +74,61 @@ export type TurnReference = {
 
 export type TurnData = {
   question: string;
-  agentWorkflow: {
-    title: string;
-    steps: AgentWorkflowStep[];
-  };
-  answer: {
-    content: string;
-    references: TurnReference[];
-  };
+  messages: StreamMessage[];
 };
+
+const AGENT_WORKFLOW_TITLE = "Agent Workflow";
+
+const EXAMPLE_PAGES: PageSummary[] = [
+  {
+    url: "https://doc.rust-lang.org/book/",
+    title: "The Rust Programming Language",
+    snippet:
+      "Foundational chapters on ownership, lifetimes, and error handling.",
+    favicon: "https://doc.rust-lang.org/favicon.ico",
+  },
+  {
+    url: "https://github.com/rust-lang/rustlings",
+    title: "Rustlings Exercises",
+    snippet:
+      "Bite-sized tasks that drill the borrow checker and pattern matching.",
+    favicon: "https://avatars.githubusercontent.com/u/5430905?s=200&v=4",
+  },
+  {
+    url: "https://rust-by-example.github.io/",
+    title: "Rust by Example",
+    snippet:
+      "Annotated snippets for quick translation from JavaScript concepts.",
+    favicon: "https://rust-by-example.github.io/favicon.ico",
+  },
+];
 
 const EXAMPLE_TURN: TurnData = {
   question:
     "What is the fastest way to get up to speed with Rust if I already write a lot of JavaScript?",
-  agentWorkflow: {
-    title: "Agent Workflow",
-    steps: [
-      {
-        title: "Plan",
-        detail:
-          "Planner decomposes the query into clear stages and deliverables.",
-        status: "complete",
-      },
-      {
-        title: "Research",
-        detail:
-          "Parallel retrievers fan out with web search, internal knowledge, and code search.",
-        status: "complete",
-      },
-      {
-        title: "Filter",
-        detail:
-          "Re-rankers discard noise and surface the most relevant supporting docs.",
-        status: "complete",
-      },
-      {
-        title: "Synthesize",
-        detail:
-          "LLM drafts the answer, citing evidence and surfacing open questions.",
-        status: "active",
-      },
-    ],
-  },
-  answer: {
-    content: `Rust rewards learning by building. Start with a concise primer on ownership and borrowing, then move directly into shipping a small CLI where you can feel the compiler guiding you. Coming from JavaScript, the type system will feel stricter, so embrace compiler errors as checklists for what to adjust next.
-
-### How to ramp quickly
-- Alternate between high-signal resources like the Rust Book, Rustlings, and Rust by Example.
-- Port a familiar JS utility into Rust to create one-to-one pattern mapping.
-- Capture borrow-checker learnings so you can reuse them later.
-
-Once you are comfortable with the borrow checker, explore async Rust and ecosystem crates: Tokio for async runtimes, Axum or Actix for web services, and Serde for data handling. Keep notes on how you solved borrow checker puzzles; it accelerates future debugging and mirrors Perplexity's habit of surfacing reasoning alongside answers.`,
-    references: [
-      {
-        title: "The Rust Programming Language",
-        description:
-          "Foundational chapters on ownership, lifetimes, and error handling.",
-        href: "https://doc.rust-lang.org/book/",
-      },
-      {
-        title: "Rustlings Exercises",
-        description:
-          "Bite-sized tasks that drill the borrow checker and pattern matching.",
-        href: "https://github.com/rust-lang/rustlings",
-      },
-      {
-        title: "Rust by Example",
-        description:
-          "Annotated snippets for quick translation from JavaScript concepts.",
-        href: "https://rust-by-example.github.io/",
-      },
-    ],
-  },
+  messages: [
+    {
+      type: "search.start",
+      query: "fastest way to learn rust for javascript developers",
+    },
+    {
+      type: "search.end",
+      query: "fastest way to learn rust for javascript developers",
+      results: 18,
+    },
+    {
+      type: "rank.start",
+    },
+    {
+      type: "fetch.start",
+      pages: EXAMPLE_PAGES,
+    },
+    {
+      type: "answer-delta",
+      delta:
+        "Rust rewards learning by building. Start with a concise primer on ownership and borrowing, then move directly into shipping a small CLI where you can feel the compiler guiding you.",
+    },
+  ],
 };
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -225,9 +266,255 @@ function renderMarkdown(content: string): ReactNode[] {
   return elements;
 }
 
+function getLast<T>(items: readonly T[]): T | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+  return items[items.length - 1];
+}
+
+function findLast<T>(
+  items: readonly T[],
+  predicate: (value: T) => boolean
+): T | undefined {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const value = items[index];
+    if (predicate(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function truncate(text: string, maxLength = 200): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function renderPageList(pages: PageSummary[]): ReactNode {
+  const uniquePages: PageSummary[] = [];
+  const seen = new Set<string>();
+
+  for (const page of pages) {
+    if (!page.url) {
+      continue;
+    }
+    if (seen.has(page.url)) {
+      continue;
+    }
+    seen.add(page.url);
+    uniquePages.push(page);
+    if (uniquePages.length >= 4) {
+      break;
+    }
+  }
+
+  if (uniquePages.length === 0) {
+    return <span>No pages available.</span>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {uniquePages.map((page) => {
+        const title = page.title?.trim() || page.url;
+        const snippet = page.snippet?.trim();
+
+        return (
+          <li key={page.url} className="space-y-0.5">
+            <span>{title}</span>
+            {snippet ? (
+              <span className="block text-xs text-zinc-500">
+                {truncate(snippet, 160)}
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function computeStepStatus(
+  hasStarted: boolean,
+  hasCompleted: boolean
+): AgentWorkflowStatus {
+  if (hasCompleted) {
+    return "complete";
+  }
+  if (hasStarted) {
+    return "active";
+  }
+  return "pending";
+}
+
+function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
+  const searchStarts = messages.filter(
+    (message): message is SearchStartMessage => message.type === "search.start"
+  );
+  const searchEnds = messages.filter(
+    (message): message is SearchEndMessage => message.type === "search.end"
+  );
+  const searchQueries = Array.from(
+    new Set([...searchStarts, ...searchEnds].map((message) => message.query))
+  );
+  const searchDetail =
+    searchQueries.length === 0 ? (
+      "Waiting for search to begin."
+    ) : (
+      <ul className="space-y-1">
+        {searchQueries.map((query) => {
+          const endMessage = findLast(
+            searchEnds,
+            (message) => message.query === query
+          );
+          const resultLabel = endMessage
+            ? `${endMessage.results} result${endMessage.results === 1 ? "" : "s"}`
+            : "Searching…";
+
+          return (
+            <li key={query} className="space-y-0.5">
+              <span>“{query}”</span>
+              <span className="block text-xs text-zinc-500">{resultLabel}</span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+
+  const rankStarts = messages.filter(
+    (message): message is RankStartMessage => message.type === "rank.start"
+  );
+  const rankEnds = messages.filter(
+    (message): message is RankEndMessage => message.type === "rank.end"
+  );
+  const latestRankEnd = getLast(rankEnds);
+  const rankDetail = latestRankEnd
+    ? renderPageList(latestRankEnd.pages)
+    : rankStarts.length > 0
+      ? "Ranking candidate pages…"
+      : "Waiting for ranking step.";
+
+  const fetchStarts = messages.filter(
+    (message): message is FetchStartMessage => message.type === "fetch.start"
+  );
+  const fetchEnds = messages.filter(
+    (message): message is FetchEndMessage => message.type === "fetch.end"
+  );
+  const latestFetchEnd = getLast(fetchEnds);
+  const fetchPages = latestFetchEnd?.pages ?? getLast(fetchStarts)?.pages ?? [];
+  const fetchDetail =
+    fetchPages && fetchPages.length > 0
+      ? renderPageList(fetchPages)
+      : fetchStarts.length > 0
+        ? "Fetching selected sources…"
+        : "Waiting for document fetch step.";
+
+  const answerMessages = messages.filter(
+    (message): message is AnswerMessage => message.type === "answer"
+  );
+  const answerDeltas = messages.filter(
+    (message): message is AnswerDeltaMessage => message.type === "answer-delta"
+  );
+  const latestAnswer = getLast(answerMessages);
+  const answerPreviewSource =
+    latestAnswer?.answer ??
+    answerDeltas.map((message) => message.delta).join(" ");
+  const answerPreview = answerPreviewSource
+    ? truncate(answerPreviewSource.replace(/\s+/g, " ").trim(), 160)
+    : "";
+  const answerDetail = answerPreview
+    ? answerPreview
+    : answerDeltas.length > 0
+      ? "Composing response…"
+      : "Waiting for synthesis step.";
+
+  return [
+    {
+      title: "Search",
+      status: computeStepStatus(searchStarts.length > 0, searchEnds.length > 0),
+      detail: searchDetail,
+    },
+    {
+      title: "Rank",
+      status: computeStepStatus(rankStarts.length > 0, Boolean(latestRankEnd)),
+      detail: rankDetail,
+    },
+    {
+      title: "Fetch",
+      status: computeStepStatus(
+        fetchStarts.length > 0,
+        Boolean(latestFetchEnd)
+      ),
+      detail: fetchDetail,
+    },
+    {
+      title: "Answer",
+      status: latestAnswer
+        ? "complete"
+        : answerDeltas.length > 0
+          ? "active"
+          : "pending",
+      detail: answerDetail,
+    },
+  ];
+}
+
+function deriveReferencesFromPages(
+  pages?: PageSummary[] | null
+): TurnReference[] {
+  if (!pages || pages.length === 0) {
+    return [];
+  }
+
+  const references: TurnReference[] = [];
+  const seen = new Set<string>();
+
+  for (const page of pages) {
+    if (!page.url || seen.has(page.url)) {
+      continue;
+    }
+    seen.add(page.url);
+    const title = page.title?.trim() || page.url;
+    const description = page.snippet?.trim() || "No summary available.";
+    references.push({
+      title,
+      description,
+      href: page.url,
+    });
+  }
+
+  return references;
+}
+
+function extractAnswer(messages: StreamMessage[]): {
+  content: string;
+  references: TurnReference[];
+} {
+  const answerMessages = messages.filter(
+    (message): message is AnswerMessage => message.type === "answer"
+  );
+  const latestAnswer = getLast(answerMessages);
+  const answerDeltas = messages.filter(
+    (message): message is AnswerDeltaMessage => message.type === "answer-delta"
+  );
+  const combinedAnswer =
+    latestAnswer?.answer ??
+    answerDeltas.map((message) => message.delta).join("");
+
+  const content = combinedAnswer ? combinedAnswer.trim() : "";
+  const references = deriveReferencesFromPages(latestAnswer?.citations);
+
+  return { content, references };
+}
+
 export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
-  const { agentWorkflow, question, answer } = turn;
-  const steps = agentWorkflow.steps;
+  const { question } = turn;
+  const messages = turn.messages ?? [];
+  const steps = buildWorkflowSteps(messages);
+  const { content: answerContent, references } = extractAnswer(messages);
+
   const totalSteps = steps.length || 1;
   const activeIndex = steps.findIndex((step) => step.status === "active");
   const completedCount = steps.filter(
@@ -239,6 +526,18 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
       : completedCount > 0
         ? Math.min(completedCount, totalSteps)
         : 1;
+
+  const hasAnswerContent = Boolean(answerContent.trim());
+  const renderedAnswer = hasAnswerContent
+    ? renderMarkdown(answerContent)
+    : [
+        <p
+          key="placeholder"
+          className="text-base leading-relaxed text-zinc-400"
+        >
+          Answer not available yet.
+        </p>,
+      ];
 
   return (
     <div className="w-auto space-y-8 py-10 text-zinc-100">
@@ -256,7 +555,7 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
             <div className="flex items-center justify-between gap-4">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
-                {agentWorkflow.title}
+                {AGENT_WORKFLOW_TITLE}
               </p>
               <span className="text-xs text-zinc-500">
                 Step {stepPosition} of {totalSteps}
@@ -271,44 +570,47 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
                   : isComplete
                     ? "Complete"
                     : "Pending";
+                const connectorClassName = `absolute left-[11px] top-6 h-full w-px ${
+                  isActive ? "bg-emerald-400/50 animate-pulse" : "bg-zinc-800"
+                }`;
+                const badgeClassName = `absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold transition-all ${
+                  isActive
+                    ? "border-emerald-300 bg-emerald-400/15 text-emerald-50 ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-zinc-900 animate-pulse"
+                    : isComplete
+                      ? "border-zinc-500 bg-zinc-800 text-zinc-200"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-400"
+                }`;
+                const statusLabelClassName = `rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-widest transition-all ${
+                  isActive
+                    ? "border-emerald-300/70 bg-emerald-400/10 text-emerald-100 animate-pulse"
+                    : isComplete
+                      ? "border-zinc-600 bg-zinc-800 text-zinc-300"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-500"
+                }`;
+                const titleClassName = `text-sm font-semibold transition-colors ${
+                  isActive ? "text-emerald-100" : "text-zinc-100"
+                }`;
+                const detailClassName = `text-sm transition-colors ${
+                  isActive ? "text-emerald-200 animate-pulse" : "text-zinc-400"
+                }`;
 
                 return (
-                  <li key={step.title} className="relative pl-9">
+                  <li
+                    key={step.title}
+                    className="relative pl-9 transition-colors"
+                  >
                     {index < steps.length - 1 ? (
-                      <span
-                        className="absolute left-[11px] top-6 h-full w-px bg-zinc-800"
-                        aria-hidden
-                      />
+                      <span className={connectorClassName} aria-hidden />
                     ) : null}
-                    <span
-                      className={`absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold ${
-                        isActive
-                          ? "border-emerald-400 bg-emerald-400/10 text-emerald-300"
-                          : isComplete
-                            ? "border-zinc-500 bg-zinc-800 text-zinc-200"
-                            : "border-zinc-700 bg-zinc-900 text-zinc-400"
-                      }`}
-                    >
-                      {index + 1}
-                    </span>
+                    <span className={badgeClassName}>{index + 1}</span>
                     <div className="flex flex-col gap-1">
                       <div className="flex flex-wrap items-center gap-3">
-                        <p className="text-sm font-semibold text-zinc-100">
-                          {step.title}
-                        </p>
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
-                            isActive
-                              ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-200"
-                              : isComplete
-                                ? "border-zinc-600 bg-zinc-800 text-zinc-300"
-                                : "border-zinc-700 bg-zinc-900 text-zinc-500"
-                          }`}
-                        >
+                        <p className={titleClassName}>{step.title}</p>
+                        <span className={statusLabelClassName}>
                           {statusLabel}
                         </span>
                       </div>
-                      <p className="text-sm text-zinc-400">{step.detail}</p>
+                      <div className={detailClassName}>{step.detail}</div>
                     </div>
                   </li>
                 );
@@ -318,29 +620,35 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
 
           <div className="space-y-6">
             <div className="space-y-4 text-base leading-relaxed text-zinc-200">
-              {renderMarkdown(answer.content)}
+              {renderedAnswer}
             </div>
 
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
                 References
               </p>
-              <div className="grid gap-3 md:grid-cols-3">
-                {answer.references.map((reference) => (
-                  <a
-                    key={reference.href}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-emerald-400/60 hover:text-emerald-200"
-                    href={reference.href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <p className="text-sm font-semibold">{reference.title}</p>
-                    <p className="mt-1 text-xs text-zinc-400">
-                      {reference.description}
-                    </p>
-                  </a>
-                ))}
-              </div>
+              {references.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-3">
+                  {references.map((reference) => (
+                    <a
+                      key={reference.href}
+                      className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-emerald-400/60 hover:text-emerald-200"
+                      href={reference.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <p className="text-sm font-semibold">{reference.title}</p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {reference.description}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-500">
+                  References will appear once sources are selected.
+                </p>
+              )}
             </div>
           </div>
         </div>
