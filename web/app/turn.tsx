@@ -463,17 +463,72 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
   const steps = buildWorkflowSteps(messages);
   const { content: answerContent, references } = extractAnswer(messages);
 
-  const totalSteps = steps.length || 1;
-  const activeIndex = steps.findIndex((step) => step.status === "active");
-  const completedCount = steps.filter(
-    (step) => step.status === "complete"
-  ).length;
-  const stepPosition =
-    activeIndex !== -1
-      ? activeIndex + 1
-      : completedCount > 0
-        ? Math.min(completedCount, totalSteps)
-        : 1;
+  const startedSteps = steps.filter((step) => step.status !== "pending");
+  const currentStep = startedSteps[startedSteps.length - 1] ?? null;
+  const workflowSubtitle = currentStep
+    ? `${currentStep.title} · ${
+        currentStep.status === "complete" ? "Complete" : "In Progress"
+      }`
+    : "Waiting for agent activity";
+  const visibleSteps = steps.filter((step) => step.status !== "pending");
+  const hasWorkflowActivity = visibleSteps.length > 0;
+
+  const workflowPlaceholder = (
+    <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/30 px-4 py-5 text-sm text-zinc-500">
+      Agent workflow updates will appear here once messages arrive.
+    </div>
+  );
+  const renderWorkflowTrack = () => (
+    <div className="space-y-5">
+      {visibleSteps.map((step, index) => {
+        const isLast = index === visibleSteps.length - 1;
+        const isActive = step.status === "active";
+        const isComplete = step.status === "complete";
+        const dotClassName = `relative h-3 w-3 rounded-full border transition ${
+          isComplete
+            ? "border-emerald-400 bg-emerald-400"
+            : isActive
+              ? "border-emerald-300 bg-emerald-300"
+              : "border-zinc-600 bg-zinc-800"
+        }`;
+        const connectorClassName = `mt-1 flex-1 w-px transition-colors ${
+          isComplete
+            ? "bg-emerald-400/70"
+            : isActive
+              ? "bg-emerald-300/60 animate-pulse"
+              : "bg-zinc-700"
+        }`;
+        const titleClassName = `text-sm font-semibold transition-colors ${
+          isActive
+            ? "text-emerald-100"
+            : isComplete
+              ? "text-zinc-100"
+              : "text-zinc-500"
+        }`;
+        const detailClassName = `text-sm transition-colors ${
+          isActive ? "text-emerald-200" : "text-zinc-400"
+        }`;
+
+        return (
+          <div key={step.title} className="flex items-start gap-4">
+            <div className="flex flex-col items-center self-stretch">
+              <span className="relative flex h-6 w-6 items-center justify-center">
+                {isActive ? (
+                  <span className="absolute h-6 w-6 rounded-full bg-emerald-400/40 blur-md animate-pulse" />
+                ) : null}
+                <span className={dotClassName} />
+              </span>
+              {!isLast ? <span className={connectorClassName} /> : <span className="flex-1" />}
+            </div>
+            <div className="flex-1 space-y-1">
+              <p className={titleClassName}>{step.title}</p>
+              <div className={detailClassName}>{step.detail}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   const hasAnswerContent = Boolean(answerContent.trim());
   const renderedAnswer = hasAnswerContent
@@ -505,65 +560,13 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
                 {AGENT_WORKFLOW_TITLE}
               </p>
-              <span className="text-xs text-zinc-500">
-                Step {stepPosition} of {totalSteps}
-              </span>
+              <span className="text-xs text-zinc-500">{workflowSubtitle}</span>
             </div>
-            <ol className="mt-5 space-y-5">
-              {steps.map((step, index) => {
-                const isActive = step.status === "active";
-                const isComplete = step.status === "complete";
-                const statusLabel = isActive
-                  ? "In Progress"
-                  : isComplete
-                    ? "Complete"
-                    : "Pending";
-                const connectorClassName = `absolute left-[11px] top-6 h-full w-px ${
-                  isActive ? "bg-emerald-400/50 animate-pulse" : "bg-zinc-800"
-                }`;
-                const badgeClassName = `absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold transition-all ${
-                  isActive
-                    ? "border-emerald-300 bg-emerald-400/15 text-emerald-50 ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-zinc-900 animate-pulse"
-                    : isComplete
-                      ? "border-zinc-500 bg-zinc-800 text-zinc-200"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-400"
-                }`;
-                const statusLabelClassName = `rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-widest transition-all ${
-                  isActive
-                    ? "border-emerald-300/70 bg-emerald-400/10 text-emerald-100 animate-pulse"
-                    : isComplete
-                      ? "border-zinc-600 bg-zinc-800 text-zinc-300"
-                      : "border-zinc-700 bg-zinc-900 text-zinc-500"
-                }`;
-                const titleClassName = `text-sm font-semibold transition-colors ${
-                  isActive ? "text-emerald-100" : "text-zinc-100"
-                }`;
-                const detailClassName = `text-sm transition-colors ${
-                  isActive ? "text-emerald-200 animate-pulse" : "text-zinc-400"
-                }`;
-
-                return (
-                  <li
-                    key={step.title}
-                    className="relative pl-9 transition-colors"
-                  >
-                    {index < steps.length - 1 ? (
-                      <span className={connectorClassName} aria-hidden />
-                    ) : null}
-                    <span className={badgeClassName}>{index + 1}</span>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <p className={titleClassName}>{step.title}</p>
-                        <span className={statusLabelClassName}>
-                          {statusLabel}
-                        </span>
-                      </div>
-                      <div className={detailClassName}>{step.detail}</div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
+            <div className="mt-5 space-y-6">
+              {hasWorkflowActivity
+                ? renderWorkflowTrack()
+                : workflowPlaceholder}
+            </div>
           </section>
 
           <div className="space-y-6">
