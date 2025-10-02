@@ -3,15 +3,84 @@ import logging
 import os
 from typing import AsyncIterator
 
-from agent import ask
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import StreamingResponse
-from message import SseEvent, SseMessageAdapter
+
+from agent import ask
+from message import (
+    ChatDoneEnvelope,
+    ChatDonePayload,
+    ChatErrorEnvelope,
+    ChatErrorPayload,
+    ChatStreamEnvelope,
+    SseEvent,
+    SseMessageAdapter,
+)
 
 logging.basicConfig(level=logging.WARNING)
 
+CHAT_STREAM_SCHEMA, CHAT_STREAM_DEFINITIONS = SseMessageAdapter.openapi_schema()
+
+CHAT_STREAM_EXAMPLES = {
+    "answer_chunk": {
+        "summary": "Answer delta chunk",
+        "value": {
+            "event": "message",
+            "data": {
+                "type": "answer-delta",
+                "delta": "Manchester City won the 2023 UEFA Champions League.",
+            },
+        },
+    },
+    "stream_completed": {
+        "summary": "Stream completed",
+        "value": {
+            "event": "end",
+            "data": {"message": "[DONE]"},
+        },
+    },
+    "stream_error": {
+        "summary": "Stream error",
+        "value": {
+            "event": "error",
+            "data": {"error": "Upstream request failed"},
+        },
+    },
+}
+
+
 app = FastAPI()
+
+
+def _custom_openapi() -> dict[str, object]:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+        description=app.description,
+        summary=app.summary,
+        contact=app.contact,
+        license_info=app.license_info,
+        terms_of_service=app.terms_of_service,
+        tags=app.openapi_tags,
+        servers=app.servers,
+    )
+
+    if CHAT_STREAM_DEFINITIONS:
+        components = openapi_schema.setdefault("components", {})
+        schemas = components.setdefault("schemas", {})
+        schemas.update(CHAT_STREAM_DEFINITIONS)
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +106,21 @@ async def chat_type() -> dict[str, list[str]]:
     return {"events": [event.value for event in SseEvent]}
 
 
-@app.get("/chat")
+@app.get(
+    "/chat",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "Server-Sent Events stream containing chat progress updates and final answer.",
+            "content": {
+                "text/event-stream": {
+                    "schema": CHAT_STREAM_SCHEMA,
+                    "examples": CHAT_STREAM_EXAMPLES,
+                }
+            },
+        }
+    },
+)
 async def chat(request: Request, user_message: str) -> StreamingResponse:
     if not user_message.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
@@ -49,19 +132,28 @@ async def chat(request: Request, user_message: str) -> StreamingResponse:
                 if await request.is_disconnected():
                     disconnected = True
                     break
-                payload_dict = SseMessageAdapter.dump_python(event, mode="json")
-                payload = json.dumps(payload_dict)
+                envelope = ChatStreamEnvelope(event=SseEvent.MESSAGE, data=event)
+                payload = json.dumps(envelope.model_dump())
+                yield f"event: {envelope.event.value}\n"
                 yield f"data: {payload}\n\n"
         except Exception as err:
             logger.exception("streaming /chat response failed: %s", err)
             # TODO: design better message
-            error_payload = json.dumps({"error": str(err)})
-            yield "event: error\n"
+            error_envelope = ChatErrorEnvelope(
+                event=SseEvent.ERROR,
+                data=ChatErrorPayload(error=str(err)),
+            )
+            error_payload = json.dumps(error_envelope.model_dump())
+            yield f"event: {error_envelope.event.value}\n"
             yield f"data: {error_payload}\n\n"
 
         if not disconnected:
-            done_payload = json.dumps({"message": "[DONE]"})
-            yield "event: end\n"
+            done_envelope = ChatDoneEnvelope(
+                event=SseEvent.END,
+                data=ChatDonePayload(message="[DONE]"),
+            )
+            done_payload = json.dumps(done_envelope.model_dump())
+            yield f"event: {done_envelope.event.value}\n"
             yield f"data: {done_payload}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
