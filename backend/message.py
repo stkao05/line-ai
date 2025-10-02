@@ -3,16 +3,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal, Sequence, TypeAlias
 
-from pydantic import BaseModel, HttpUrl, TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 
 class Page(BaseModel):
     """Normalized representation of a fetched page."""
 
-    url: HttpUrl
+    url: str
     title: str | None = None
     snippet: str | None = None
-    favicon: HttpUrl | None = None
+    favicon: str | None = None
 
 
 class BaseStreamMessage(BaseModel):
