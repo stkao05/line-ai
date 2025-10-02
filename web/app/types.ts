@@ -1,73 +1,86 @@
-export type Snowflake = string;
-export type ISO8601 = string;
+export type PageSummary = {
+  url: string;
+  title?: string | null;
+  snippet?: string | null;
+  favicon?: string | null;
+};
 
-export type SseEvent =
-  | "turn.start"
-  | "turn.done"
-  | "answer.delta"
-  | "answer.done"
-  | "agent.status";
+type SearchStartMessage = {
+  type: "search.start";
+  query: string;
+};
 
-export interface BaseMeta {
-  conversation_id: Snowflake;
-  turn_id: Snowflake;
-  id: Snowflake;
-  ts: ISO8601;
-}
+type SearchEndMessage = {
+  type: "search.end";
+  query: string;
+  results: number;
+};
 
-export interface TurnStart extends BaseMeta {
-  user_message: {
-    text: string;
+type RankStartMessage = {
+  type: "rank.start";
+};
+
+type RankEndMessage = {
+  type: "rank.end";
+  pages: PageSummary[];
+};
+
+type FetchStartMessage = {
+  type: "fetch.start";
+  pages: PageSummary[];
+};
+
+type FetchEndMessage = {
+  type: "fetch.end";
+  pages?: PageSummary[] | null;
+};
+
+type AnswerDeltaMessage = {
+  type: "answer-delta";
+  delta: string;
+};
+
+type AnswerMessage = {
+  type: "answer";
+  answer: string;
+  citations?: PageSummary[] | null;
+};
+
+export type StreamMessage =
+  | SearchStartMessage
+  | SearchEndMessage
+  | RankStartMessage
+  | RankEndMessage
+  | FetchStartMessage
+  | FetchEndMessage
+  | AnswerDeltaMessage
+  | AnswerMessage;
+
+export type ChatStreamEnvelope = {
+  event: "message";
+  data: StreamMessage;
+};
+
+export type ChatErrorEnvelope = {
+  event: "error";
+  data: {
+    error: string;
   };
-}
+};
 
-export interface TurnDone extends BaseMeta {
-  status: "ok" | "error";
-}
+export type ChatDoneEnvelope = {
+  event: "end";
+  data: {
+    message: "[DONE]";
+  };
+};
 
-export interface AnswerDelta extends BaseMeta {
-  text: string;
-}
+export type ChatSseEvent =
+  | ChatStreamEnvelope
+  | ChatErrorEnvelope
+  | ChatDoneEnvelope;
 
-export interface AnswerDone extends BaseMeta {
-  final_text_hash?: string;
-}
-
-export interface AgentStatus extends BaseMeta {
-  stage: "planning" | "retrieving" | "writing";
-  detail?: string;
-}
-
-export type SseMessage =
-  | { event: "turn.start"; data: TurnStart }
-  | { event: "turn.done"; data: TurnDone }
-  | { event: "answer.delta"; data: AnswerDelta }
-  | { event: "answer.done"; data: AnswerDone }
-  | { event: "agent.status"; data: AgentStatus };
-
-// the message state representation used on the UI
-
-export interface MessageBase {
-  conversation_id: string;
-  turn_id: Snowflake;
-}
-
-export interface UserMessage extends MessageBase {
-  type: "user.message";
-  content: string;
-}
-
-export interface AssistantAnsweringMessage extends MessageBase {
-  type: "assistant.message";
-  content: string;
-}
-
-export interface AgentStatusMessage extends MessageBase {
-  type: "agent.status";
-  stage: "planning" | "retrieving" | "writing";
-  detail?: string;
-}
-
-export type ChatMessage = UserMessage | AssistantAnsweringMessage;
-
-export type Message = ChatMessage | AgentStatusMessage;
+export type TurnData = {
+  question: string;
+  messages: StreamMessage[];
+};

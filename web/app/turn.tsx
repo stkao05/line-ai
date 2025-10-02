@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import type { PageSummary, StreamMessage, TurnData } from "./types";
+export type { TurnData } from "./types";
 
 export type AgentWorkflowStatus = "complete" | "active" | "pending";
 
@@ -8,73 +10,19 @@ export type AgentWorkflowStep = {
   status: AgentWorkflowStatus;
 };
 
-export type PageSummary = {
-  url: string;
-  title?: string | null;
-  snippet?: string | null;
-  favicon?: string | null;
-};
-
-type SearchStartMessage = {
-  type: "search.start";
-  query: string;
-};
-
-type SearchEndMessage = {
-  type: "search.end";
-  query: string;
-  results: number;
-};
-
-type RankStartMessage = {
-  type: "rank.start";
-};
-
-type RankEndMessage = {
-  type: "rank.end";
-  pages: PageSummary[];
-};
-
-type FetchStartMessage = {
-  type: "fetch.start";
-  pages: PageSummary[];
-};
-
-type FetchEndMessage = {
-  type: "fetch.end";
-  pages?: PageSummary[] | null;
-};
-
-type AnswerDeltaMessage = {
-  type: "answer-delta";
-  delta: string;
-};
-
-type AnswerMessage = {
-  type: "answer";
-  answer: string;
-  citations?: PageSummary[] | null;
-};
-
-export type StreamMessage =
-  | SearchStartMessage
-  | SearchEndMessage
-  | RankStartMessage
-  | RankEndMessage
-  | FetchStartMessage
-  | FetchEndMessage
-  | AnswerDeltaMessage
-  | AnswerMessage;
+type SearchStartMessage = Extract<StreamMessage, { type: "search.start" }>;
+type SearchEndMessage = Extract<StreamMessage, { type: "search.end" }>;
+type RankStartMessage = Extract<StreamMessage, { type: "rank.start" }>;
+type RankEndMessage = Extract<StreamMessage, { type: "rank.end" }>;
+type FetchStartMessage = Extract<StreamMessage, { type: "fetch.start" }>;
+type FetchEndMessage = Extract<StreamMessage, { type: "fetch.end" }>;
+type AnswerDeltaMessage = Extract<StreamMessage, { type: "answer-delta" }>;
+type AnswerMessage = Extract<StreamMessage, { type: "answer" }>;
 
 export type TurnReference = {
   title: string;
   description: string;
   href: string;
-};
-
-export type TurnData = {
-  question: string;
-  messages: StreamMessage[];
 };
 
 const AGENT_WORKFLOW_TITLE = "Agent Workflow";
