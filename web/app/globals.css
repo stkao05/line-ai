@@ -11,6 +11,35 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-* {
-  color: var(--color-gray-300);
+@keyframes glow-text-fast {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.7));
+  }
+}
+
+.glow-text-fast {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+  animation: glow-text-fast 1s ease-in-out infinite alternate;
+}
+
+@keyframes glow-dot-fast {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
+    transform: scale(0.95);
+  }
+
+  50% {
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.7);
+    transform: scale(1.08);
+  }
+}
+
+.glow-dot-fast {
+  animation: glow-dot-fast 1s ease-in-out infinite alternate;
 }

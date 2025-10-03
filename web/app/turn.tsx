@@ -68,7 +68,15 @@ const EXAMPLE_TURN: TurnData = {
       type: "rank.start",
     },
     {
+      type: "rank.end",
+      pages: EXAMPLE_PAGES,
+    },
+    {
       type: "fetch.start",
+      pages: EXAMPLE_PAGES,
+    },
+    {
+      type: "fetch.end",
       pages: EXAMPLE_PAGES,
     },
     {
@@ -241,9 +249,13 @@ function truncate(text: string, maxLength = 200): string {
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function renderPageList(pages: PageSummary[]): ReactNode {
+function renderPageList(
+  pages: PageSummary[],
+  options?: { variant?: "default" | "fetch" }
+): ReactNode {
   const uniquePages: PageSummary[] = [];
   const seen = new Set<string>();
+  const variant = options?.variant ?? "default";
 
   for (const page of pages) {
     if (!page.url) {
@@ -268,6 +280,39 @@ function renderPageList(pages: PageSummary[]): ReactNode {
       {uniquePages.map((page) => {
         const title = page.title?.trim() || page.url;
         const snippet = page.snippet?.trim();
+        const favicon = page.favicon?.trim();
+        const displayUrl = truncate(page.url, 120);
+
+        if (variant === "fetch") {
+          return (
+            <li key={page.url} className="flex items-start gap-3">
+              {favicon ? (
+                <img
+                  src={favicon}
+                  alt=""
+                  className="h-6 w-6 shrink-0 rounded-full border border-zinc-800"
+                />
+              ) : (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-[10px] text-zinc-500">
+                  {title.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-zinc-400">
+                  {title}
+                </span>
+                <a
+                  href={page.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-zinc-500 hover:text-emerald-200"
+                >
+                  {displayUrl}
+                </a>
+              </div>
+            </li>
+          );
+        }
 
         return (
           <li key={page.url} className="space-y-0.5">
@@ -339,7 +384,7 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   );
   const latestRankEnd = getLast(rankEnds);
   const rankDetail = latestRankEnd
-    ? renderPageList(latestRankEnd.pages)
+    ? `Ranked ${latestRankEnd.pages.length} candidate page${latestRankEnd.pages.length === 1 ? "" : "s"}.`
     : rankStarts.length > 0
       ? "Ranking candidate pages…"
       : "Waiting for ranking step.";
@@ -354,7 +399,7 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   const fetchPages = latestFetchEnd?.pages ?? getLast(fetchStarts)?.pages ?? [];
   const fetchDetail =
     fetchPages && fetchPages.length > 0
-      ? renderPageList(fetchPages)
+      ? renderPageList(fetchPages, { variant: "fetch" })
       : fetchStarts.length > 0
         ? "Fetching selected sources…"
         : "Waiting for document fetch step.";
@@ -366,13 +411,11 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
     (message): message is AnswerDeltaMessage => message.type === "answer-delta"
   );
   const latestAnswer = getLast(answerMessages);
-  const answerPreviewSource =
-    latestAnswer?.answer ??
-    answerDeltas.map((message) => message.delta).join(" ");
-  const answerPreview = answerPreviewSource
-    ? truncate(answerPreviewSource.replace(/\s+/g, " ").trim(), 160)
+  const rawFinalAnswer = latestAnswer?.answer?.trim();
+  const answerPreview = rawFinalAnswer
+    ? truncate(rawFinalAnswer.replace(/\s+/g, " ").trim(), 160)
     : "";
-  const answerDetail = answerPreview
+  const answerDetail = rawFinalAnswer
     ? answerPreview
     : answerDeltas.length > 0
       ? "Composing response…"
@@ -485,28 +528,28 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
         const isActive = step.status === "active";
         const isComplete = step.status === "complete";
         const dotClassName = `relative h-3 w-3 rounded-full border transition ${
-          isComplete
-            ? "border-emerald-400 bg-emerald-400"
-            : isActive
-              ? "border-emerald-300 bg-emerald-300"
+          isActive
+            ? "border-emerald-300 bg-emerald-300"
+            : isComplete
+              ? "border-zinc-500 bg-zinc-500"
               : "border-zinc-600 bg-zinc-800"
         }`;
         const connectorClassName = `mt-1 flex-1 w-px transition-colors ${
-          isComplete
-            ? "bg-emerald-400/70"
-            : isActive
-              ? "bg-emerald-300/60 animate-pulse"
+          isActive
+            ? "bg-emerald-300/60 animate-pulse"
+            : isComplete
+              ? "bg-zinc-600"
               : "bg-zinc-700"
         }`;
-        const titleClassName = `text-sm font-semibold transition-colors ${
+        const titleClassName = `text-sm font-semibold transition ${
           isActive
-            ? "text-emerald-100"
+            ? "text-zinc-50 glow-text-fast"
             : isComplete
               ? "text-zinc-100"
               : "text-zinc-500"
         }`;
         const detailClassName = `text-sm transition-colors ${
-          isActive ? "text-emerald-200" : "text-zinc-400"
+          isActive ? "text-zinc-300" : "text-zinc-400"
         }`;
 
         return (
@@ -514,11 +557,15 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
             <div className="flex flex-col items-center self-stretch">
               <span className="relative flex h-6 w-6 items-center justify-center">
                 {isActive ? (
-                  <span className="absolute h-6 w-6 rounded-full bg-emerald-400/40 blur-md animate-pulse" />
+                  <span className="absolute h-6 w-6 rounded-full bg-emerald-400/40 blur-md glow-dot-fast" />
                 ) : null}
                 <span className={dotClassName} />
               </span>
-              {!isLast ? <span className={connectorClassName} /> : <span className="flex-1" />}
+              {!isLast ? (
+                <span className={connectorClassName} />
+              ) : (
+                <span className="flex-1" />
+              )}
             </div>
             <div className="flex-1 space-y-1">
               <p className={titleClassName}>{step.title}</p>
