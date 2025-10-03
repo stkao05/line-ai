@@ -5,7 +5,7 @@ import type {
   ChatStreamEnvelope,
   StreamMessage,
   TurnData,
-} from "../app/types";
+} from "../types";
 
 type ChatStatus = "ready" | "streaming" | "error";
 

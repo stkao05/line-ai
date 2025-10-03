@@ -8,8 +8,8 @@ import {
   useCallback,
   useState,
 } from "react";
-import { Turn } from "./turn";
-import { ChatForm } from "./chat-form";
+import { Turn } from "../components/turn";
+import { ChatForm } from "../components/chat-form";
 
 export function Chat() {
   const { turn, status, error, sendMessage } = useChat();
