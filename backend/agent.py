@@ -28,10 +28,14 @@ from message import (
     StreamMessage,
 )
 from pydantic import BaseModel, ValidationError
-from tools import fetch_page_content, google_search
+from tools import fetch_page, google_search
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
+
+# gemini_api_key = os.getenv("GEMINI_API_KEY")
+# gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+# model_client = OpenAIChatCompletionClient(model=gemini_model, api_key=gemini_api_key)
 
 
 class SearchQuery(BaseModel):
@@ -189,15 +193,20 @@ class PageFetchAgent(BaseChatAgent):
                     return None
 
                 try:
-                    payload = await fetch_page_content(
-                        url=url, max_chars=self._max_chars
-                    )
+                    payload = await fetch_page(url=url, max_chars=self._max_chars)
                 except Exception as exc:  # pragma: no cover - defensive guardrail
                     payload = {
                         "url": url,
                         "title": url,
                         "content": f"ERROR: failed to fetch page content ({exc})",
                     }
+                else:
+                    if payload is None:
+                        payload = {
+                            "url": url,
+                            "title": url,
+                            "content": "Content unavailable.",
+                        }
 
                 if not isinstance(payload, dict):
                     payload = {
@@ -361,12 +370,13 @@ async def ask(user_message: str) -> AsyncIterator[StreamMessage]:
         title: Optional[str] = None,
         snippet: Optional[str] = None,
         favicon: Optional[str] = None,
+        snippet_maxlen: Optional[int] = 100,
     ) -> Page | None:
         payload: Dict[str, Optional[str]] = {"url": url}
         if title:
             payload["title"] = title
         if snippet:
-            payload["snippet"] = snippet
+            payload["snippet"] = snippet[:snippet_maxlen] if snippet_maxlen else snippet
         if favicon:
             payload["favicon"] = favicon
 
@@ -403,6 +413,10 @@ async def ask(user_message: str) -> AsyncIterator[StreamMessage]:
                     query=query,
                     results=len(event.content.candidates),
                 )
+
+            if not rank_started:
+                rank_started = True
+                yield RankStartMessage(type="rank.start")
 
             continue
 

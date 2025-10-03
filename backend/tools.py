@@ -72,8 +72,10 @@ async def google_search(query: str, num_results: int) -> list:
     return collected
 
 
-async def fetch_page_content(url: str, max_chars: int) -> dict:
-    """Fetch and trim textual content from a single web page."""
+async def fetch_page(url: str, max_chars: int) -> dict[str, str] | None:
+    """Fetch and trim textual content from a single web page.
+
+    Returns None when the request cannot be completed successfully."""
 
     timeout = httpx.Timeout(4.0)
 
@@ -81,12 +83,8 @@ async def fetch_page_content(url: str, max_chars: int) -> dict:
         try:
             response = await client.get(url)
             response.raise_for_status()
-        except httpx.HTTPError as exc:
-            return {
-                "url": url,
-                "title": url,
-                "content": f"ERROR: failed to fetch page content ({exc})",
-            }
+        except httpx.HTTPError:
+            return None
 
     soup = BeautifulSoup(response.text, "html.parser")
     text = soup.get_text(separator=" ", strip=True)

@@ -6,7 +6,7 @@ import {
   type AgentWorkflowStatus,
 } from "./agent-workflow-card";
 import { AnswerSection, type TurnReference } from "./answer-section";
-import { EXAMPLE_TURN } from "../app/turn.fixtures";
+import { EXAMPLE_TURN } from "../components/turn.fixtures";
 
 export type { TurnData } from "../types";
 export type {
