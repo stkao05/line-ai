@@ -14,7 +14,7 @@ import { ChatForm } from "../components/chat-form";
 const SHOW_MOCK_TURN = false;
 const SUGGESTED_QUESTIONS = [
   "What's new with LINE this month?",
-  "Give me ideas for integrating agent into my product roadmap.",
+  "Why is sky blue?",
   "Summarize recent breakthroughs in agentic AI research.",
   "How can I evaluate model quality when prototyping with AI agent?",
 ];

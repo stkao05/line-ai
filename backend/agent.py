@@ -437,6 +437,11 @@ def create_team():
         max_chars=4000,
     )
 
+    today_date_agent = TodayDateAgent(
+        name="today_date_agent",
+        description="Surface the current date information for deep dive workflows",
+    )
+
     termination = TextMentionTermination(
         "TERMINATE", sources=["report_agent", "quick_answer_agent"]
     )
@@ -482,11 +487,18 @@ def create_team():
     builder.add_node(google_search_agent)
     builder.add_node(search_rank_agent)
     builder.add_node(page_fetch_agent)
+    builder.add_node(today_date_agent)
     builder.add_node(quick_answer_agent)
     builder.add_node(report_agent)
 
     builder.set_entry_point(router_agent)
 
+    builder.add_edge(
+        router_agent,
+        today_date_agent,
+        condition=lambda msg: isinstance(msg, RoutePlanMessage)
+        and msg.content.route == "deep_dive",
+    )
     builder.add_edge(
         router_agent,
         research_planner_agent,
@@ -764,7 +776,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "Why is sky blue?"
+        question = "What is latest Line company news"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):
