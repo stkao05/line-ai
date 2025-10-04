@@ -10,7 +10,7 @@ import type {
 type ChatStatus = "ready" | "streaming" | "error";
 
 type UseChatReturn = {
-  turn: TurnData | null;
+  turns: TurnData[];
   status: ChatStatus;
   error: string | null;
   sendMessage: (args: { text: string }) => void;
@@ -36,12 +36,13 @@ function isStreamMessage(value: unknown): value is StreamMessage {
 }
 
 export function useChat(): UseChatReturn {
-  const [turn, setTurn] = useState<TurnData | null>(null);
+  const [turns, setTurns] = useState<TurnData[]>([]);
   const [status, setStatus] = useState<ChatStatus>("ready");
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const cleanupRef = useRef<((nextStatus: ChatStatus) => void) | null>(null);
+  const activeTurnIndexRef = useRef<number | null>(null);
 
   const cancel = useCallback(() => {
     cleanupRef.current?.("ready");
@@ -72,7 +73,11 @@ export function useChat(): UseChatReturn {
     const stream = new EventSource(streamUrl);
     streamRef.current = stream;
 
-    setTurn({ question, messages: [] });
+    setTurns((previous) => {
+      const next = [...previous, { question, messages: [] }];
+      activeTurnIndexRef.current = next.length - 1;
+      return next;
+    });
     setStatus("streaming");
     setError(null);
 
@@ -85,19 +90,24 @@ export function useChat(): UseChatReturn {
         streamRef.current = null;
       }
       cleanupRef.current = null;
+      activeTurnIndexRef.current = null;
       setStatus(nextStatus);
     }
 
     function appendMessage(message: StreamMessage) {
-      setTurn((previous) => {
-        if (!previous) {
-          return { question, messages: [message] };
+      setTurns((previous) => {
+        const turnIndex = activeTurnIndexRef.current;
+        if (turnIndex === null || turnIndex < 0 || turnIndex >= previous.length) {
+          return previous;
         }
 
-        return {
-          ...previous,
-          messages: [...previous.messages, message],
+        const nextTurns = [...previous];
+        const currentTurn = nextTurns[turnIndex];
+        nextTurns[turnIndex] = {
+          ...currentTurn,
+          messages: [...currentTurn.messages, message],
         };
+        return nextTurns;
       });
     }
 
@@ -177,7 +187,7 @@ export function useChat(): UseChatReturn {
   }, []);
 
   return {
-    turn,
+    turns,
     status,
     error,
     sendMessage,

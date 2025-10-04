@@ -12,7 +12,7 @@ import { Turn } from "../components/turn";
 import { ChatForm } from "../components/chat-form";
 
 export function Chat() {
-  const { turn, status, error, sendMessage } = useChat();
+  const { turns, status, error, sendMessage } = useChat();
   const [input, setInput] = useState("what is today weather in taipai");
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -41,10 +41,14 @@ export function Chat() {
     [input, sendMessage, status]
   );
 
+  const hasTurns = turns.length > 0;
+
   return (
-    <main className="max-w-[1000px] mx-auto pb-[100px]">
-      <div>
-        <Turn turn={turn ?? undefined} />
+    <main className="max-w-[1000px] mx-auto pb-[120px]">
+      <div className="space-y-4">
+        {hasTurns
+          ? turns.map((turn, index) => <Turn key={index} turn={turn} />)
+          : <Turn />}
       </div>
       <div className="fixed bottom-4 w-full max-w-[1000px]">
         {error ? (
