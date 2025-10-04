@@ -17,6 +17,7 @@ export type { TurnReference } from "./answer-section";
 
 const AGENT_WORKFLOW_TITLE = "Agent Workflow";
 
+type TurnStartMessage = Extract<StreamMessage, { type: "turn.start" }>;
 type SearchStartMessage = Extract<StreamMessage, { type: "search.start" }>;
 type SearchEndMessage = Extract<StreamMessage, { type: "search.end" }>;
 type RankStartMessage = Extract<StreamMessage, { type: "rank.start" }>;
@@ -147,6 +148,9 @@ function computeStepStatus(
 }
 
 function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
+  const turnStarts = messages.filter(
+    (message): message is TurnStartMessage => message.type === "turn.start"
+  );
   const searchStarts = messages.filter(
     (message): message is SearchStartMessage => message.type === "search.start"
   );
@@ -216,28 +220,43 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   );
   const latestAnswer = getLast(answerMessages);
   const rawFinalAnswer = latestAnswer?.answer?.trim();
-  const answerPreview = rawFinalAnswer
-    ? truncate(rawFinalAnswer.replace(/\s+/g, " ").trim(), 160)
-    : "";
   const answerDetail = rawFinalAnswer
-    ? answerPreview
+    ? "Final response prepared."
     : answerDeltas.length > 0
       ? "Composing response…"
       : "Waiting for synthesis step.";
 
+  const hasTurnStart = turnStarts.length > 0;
+  const hasAnyWorkflowMessageBeyondTurnStart = messages.some(
+    (message) => message.type !== "turn.start"
+  );
+  const thinkingStatus: AgentWorkflowStatus = hasTurnStart
+    ? hasAnyWorkflowMessageBeyondTurnStart
+      ? "complete"
+      : "active"
+    : "pending";
+  const thinkingDetail = hasTurnStart
+    ? "Assessing the question before taking action."
+    : "Waiting for the agent to begin.";
+
   return [
     {
-      title: "Search",
+      title: "Thinking through the request",
+      status: thinkingStatus,
+      detail: thinkingDetail,
+    },
+    {
+      title: "Searching the knowledge base",
       status: computeStepStatus(searchStarts.length > 0, searchEnds.length > 0),
       detail: searchDetail,
     },
     {
-      title: "Rank",
+      title: "Ranking potential sources",
       status: computeStepStatus(rankStarts.length > 0, Boolean(latestRankEnd)),
       detail: rankDetail,
     },
     {
-      title: "Fetch",
+      title: "Fetching supporting details",
       status: computeStepStatus(
         fetchStarts.length > 0,
         Boolean(latestFetchEnd)
@@ -245,7 +264,7 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
       detail: fetchDetail,
     },
     {
-      title: "Answer",
+      title: "Answering the question",
       status: latestAnswer
         ? "complete"
         : answerDeltas.length > 0
