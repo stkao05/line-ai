@@ -1,4 +1,4 @@
-import type { PageSummary, TurnData } from "./types";
+import type { PageSummary, TurnData } from "../types";
 
 export const EXAMPLE_PAGES: PageSummary[] = [
   {
