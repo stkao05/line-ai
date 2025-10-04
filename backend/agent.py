@@ -469,8 +469,7 @@ def create_team():
     builder.add_edge(
         router_agent,
         google_search_agent,
-        condition=lambda msg: isinstance(msg, RoutePlanMessage)
-        and msg.content.route == "deep_dive",
+        condition='"route":"deep_dive"',
     )
     builder.add_edge(google_search_agent, search_rank_agent)
     builder.add_edge(search_rank_agent, page_fetch_agent)
@@ -478,8 +477,7 @@ def create_team():
     builder.add_edge(
         router_agent,
         quick_answer_agent,
-        condition=lambda msg: isinstance(msg, RoutePlanMessage)
-        and msg.content.route == "quick_answer",
+        condition='"route":"quick_answer"',
     )
 
     graph = builder.build()
@@ -624,9 +622,8 @@ async def ask(
                         if rank_limit is None or len(ranked_pages) < rank_limit:
                             ranked_pages.append(ranked_page)
 
-                        if (
-                            url not in fetch_announced
-                            and (fetch_limit is None or len(fetch_start_pages) < fetch_limit)
+                        if url not in fetch_announced and (
+                            fetch_limit is None or len(fetch_start_pages) < fetch_limit
                         ):
                             fetch_announced.add(url)
                             fetch_start_pages.append(ranked_page)
@@ -662,7 +659,10 @@ async def ask(
                             break
                         if fetch_limit is None or len(fetched_pages) < fetch_limit:
                             fetched_pages.append(fetched_page)
-                        if fetch_limit is not None and len(fetched_pages) >= fetch_limit:
+                        if (
+                            fetch_limit is not None
+                            and len(fetched_pages) >= fetch_limit
+                        ):
                             break
 
                 latest_citation_pages = fetched_pages
@@ -724,7 +724,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "What is this year Taipei top event"
+        question = "Why is sky blue"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):
