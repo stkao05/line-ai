@@ -36,6 +36,9 @@ from tools import fetch_page, google_search
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
+quick_answer_model_client = OpenAIChatCompletionClient(
+    model="gpt-4.1", api_key=openai_api_key
+)
 
 # gemini_api_key = os.getenv("GEMINI_API_KEY")
 # gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
@@ -414,7 +417,9 @@ def create_team():
         max_chars=4000,
     )
 
-    termination = TextMentionTermination("TERMINATE", sources=["report_agent"])
+    termination = TextMentionTermination(
+        "TERMINATE", sources=["report_agent", "quick_answer_agent"]
+    )
 
     report_system_message = """
     You are a helpful report-writing assistant.
@@ -425,6 +430,23 @@ def create_team():
     - Present the answer in clear sections or paragraphs as appropriate.
     - When you finish, append the token `TERMINATE` on a new line to signal completion.
     """
+
+    quick_system_message = """
+    You are a **rapid response assistant** trusted to deliver concise, high-quality answers.
+
+    - Provide an accurate answer directly using your general knowledge and the conversation context.
+    - If more research is required, acknowledge the limitation rather than fabricating details.
+    - Keep the response focused and actionable. Include brief structure when it improves clarity.
+    - When you finish, append the token `TERMINATE` on a new line to signal completion.
+    """
+
+    quick_answer_agent = AssistantAgent(
+        name="quick_answer_agent",
+        model_client=quick_answer_model_client,
+        description="Deliver concise answers without external research",
+        system_message=quick_system_message,
+        model_client_stream=True,
+    )
 
     report_agent = AssistantAgent(
         name="report_agent",
@@ -439,6 +461,7 @@ def create_team():
     builder.add_node(google_search_agent)
     builder.add_node(search_rank_agent)
     builder.add_node(page_fetch_agent)
+    builder.add_node(quick_answer_agent)
     builder.add_node(report_agent)
 
     builder.set_entry_point(router_agent)
@@ -454,7 +477,7 @@ def create_team():
     builder.add_edge(page_fetch_agent, report_agent)
     builder.add_edge(
         router_agent,
-        report_agent,
+        quick_answer_agent,
         condition=lambda msg: isinstance(msg, RoutePlanMessage)
         and msg.content.route == "quick_answer",
     )
@@ -501,6 +524,7 @@ async def ask(
         fallback_segments: List[str] = []
         latest_citation_pages: List[Page] = []
         active_plan: Optional[RoutePlan] = None
+        final_agent_sources: Set[str] = {"report_agent", "quick_answer_agent"}
 
         def build_page(
             url: str,
@@ -650,7 +674,7 @@ async def ask(
                 continue
 
             if isinstance(event, ModelClientStreamingChunkEvent):
-                if event.source == "report_agent":
+                if event.source in final_agent_sources:
                     content = event.content or ""
                     if content:
                         answer_chunks.append(content)
@@ -659,7 +683,7 @@ async def ask(
 
             if (
                 isinstance(event, BaseTextChatMessage)
-                and event.source == "report_agent"
+                and event.source in final_agent_sources
             ):
                 # Capture the final report for fallback when streaming chunks are unavailable.
                 if event.content:
@@ -680,7 +704,7 @@ async def ask(
                     for message in event.messages:
                         if (
                             isinstance(message, BaseTextChatMessage)
-                            and message.source == "report_agent"
+                            and message.source in final_agent_sources
                         ):
                             report_segments.append(message.content)
                     final_answer = strip_termination_token("".join(report_segments))
