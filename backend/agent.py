@@ -3,7 +3,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import AsyncIterator, Dict, List, Optional, Sequence, Set
+from typing import AsyncIterator, Dict, List, Literal, Optional, Sequence, Set
 from uuid import uuid4
 
 from autogen_agentchat.agents import AssistantAgent, BaseChatAgent
@@ -15,7 +15,7 @@ from autogen_agentchat.messages import (
     ModelClientStreamingChunkEvent,
     StructuredMessage,
 )
-from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.teams import DiGraphBuilder, GraphFlow
 from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from message import (
@@ -44,7 +44,7 @@ model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key
 
 @dataclass
 class ConversationState:
-    team: RoundRobinGroupChat
+    team: GraphFlow
     lock: asyncio.Lock
 
 
@@ -104,6 +104,17 @@ class SearchResult(BaseModel):
 SearchResultMessage = StructuredMessage[SearchResult]
 
 
+class RoutePlan(BaseModel):
+    route: Literal["quick_answer", "deep_dive"]
+    queries: List[str]
+    rank_top_k: int
+    fetch_page_limit: int
+    model_tier: str
+
+
+RoutePlanMessage = StructuredMessage[RoutePlan]
+
+
 class TodayDate(BaseModel):
     iso_date: str
     human_readable: str
@@ -111,6 +122,15 @@ class TodayDate(BaseModel):
 
 
 TodayDateMessage = StructuredMessage[TodayDate]
+
+
+def _latest_message_of_type(
+    messages: Sequence[BaseChatMessage], message_type: type[BaseChatMessage]
+) -> Optional[BaseChatMessage]:
+    for message in reversed(messages):
+        if isinstance(message, message_type):
+            return message
+    return None
 
 
 class TodayDateAgent(BaseChatAgent):
@@ -161,15 +181,18 @@ class GoogleSearchExecutorAgent(BaseChatAgent):
     async def on_messages(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> Response:
-        query_message: Optional[SearchQueryMessage] = None
-        for message in reversed(messages):
-            if isinstance(message, SearchQueryMessage):
-                query_message = message
-                break
+        query_message = _latest_message_of_type(messages, SearchQueryMessage)
+        plan_message = _latest_message_of_type(messages, RoutePlanMessage)
 
         query_text = ""
         if query_message is not None:
             query_text = query_message.content.query.strip()
+        elif isinstance(plan_message, RoutePlanMessage):
+            for candidate in plan_message.content.queries:
+                candidate_query = candidate.strip()
+                if candidate_query:
+                    query_text = candidate_query
+                    break
 
         candidates: List[SearchCandidateItem] = []
 
@@ -231,6 +254,11 @@ class PageFetchAgent(BaseChatAgent):
     async def on_messages(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> Response:
+        plan_message = _latest_message_of_type(messages, RoutePlanMessage)
+        fetch_limit: Optional[int] = None
+        if isinstance(plan_message, RoutePlanMessage):
+            fetch_limit = max(0, plan_message.content.fetch_page_limit)
+
         ranked_message: Optional[RankedSearchResultsMessage] = None
         for message in reversed(messages):
             if isinstance(message, RankedSearchResultsMessage):
@@ -243,6 +271,12 @@ class PageFetchAgent(BaseChatAgent):
         results: List[SearchResultItem] = []
 
         if ranked_message is not None:
+            selections = list(ranked_message.content.selections)
+            if fetch_limit is not None:
+                if fetch_limit == 0:
+                    selections = []
+                else:
+                    selections = selections[:fetch_limit]
 
             async def fetch(
                 selection: RankedSearchResultItem,
@@ -277,7 +311,7 @@ class PageFetchAgent(BaseChatAgent):
                 return selection, payload
 
             payloads = await asyncio.gather(
-                *(fetch(selection) for selection in ranked_message.content.selections),
+                *(fetch(selection) for selection in selections),
                 return_exceptions=False,
             )
 
@@ -320,28 +354,32 @@ class PageFetchAgent(BaseChatAgent):
 
 
 def create_team():
-    today_date_agent = TodayDateAgent(
-        name="today_date_agent",
-        description="Provide the current UTC date to assist with query timing",
-    )
+    current_utc = datetime.now(timezone.utc)
+    iso_date = current_utc.date().isoformat()
+    human_date = current_utc.strftime("%B %d, %Y")
 
-    query_system_message = """
-    You are a **search query planner**.
+    router_system_message = f"""
+    You are the **routing planner** for a retrieval assistant. Today's date is {human_date} (UTC {iso_date}).
 
-    - Review the user's question and craft the single most effective Google search query.
-    - A `TodayDate` structured message shares the current UTC date; use it when crafting time-sensitive queries.
-    - Respond with a `SearchQuery` structured object containing the final query string in the `query` field.
-    - Focus on precision keywords that will surface authoritative, up-to-date sources.
-    - Do **not** answer the user's question directly or call any tools.
-    - Keep your output concise; do not add commentary outside of the structured response.
+    Responsibilities:
+    - Inspect the latest user request and decide whether a QUICK_ANSWER or DEEP_DIVE route is required.
+    - Emit a `RoutePlan` structured object with the following fields:
+      - `route`: `"quick_answer"` for lightweight responses or `"deep_dive"` when external research is required.
+      - `queries`: Up to 3 high-quality Google queries (empty list when using the quick route).
+      - `rank_top_k`: The maximum number of search candidates to keep (1-3 recommended).
+      - `fetch_page_limit`: Number of pages to fetch in detail (0 for quick route, typically 3 for deep dive).
+      - `model_tier`: Pick `"fast"` for lightweight queries or `"advanced"` for complex analysis.
+    - Prefer `"quick_answer"` when the request is straightforward, answerable from general knowledge, or when search would not add value.
+    - Prefer `"deep_dive"` for questions needing up-to-date facts, citations, or multiple corroborating sources.
+    - Keep the plan concise and avoid free-form commentary outside of the structured object.
     """
 
-    search_query_agent = AssistantAgent(
-        name="search_query_agent",
+    router_agent = AssistantAgent(
+        name="router_agent",
         model_client=model_client,
-        output_content_type=SearchQuery,
-        description="Generate targeted Google search queries based on the user request",
-        system_message=query_system_message,
+        output_content_type=RoutePlan,
+        description="Select the optimal workflow path and prepare search queries",
+        system_message=router_system_message,
     )
 
     google_search_agent = GoogleSearchExecutorAgent(
@@ -354,7 +392,7 @@ def create_team():
     You are a **search ranking analyst**.
 
     - Review the user's question and the `SearchCandidates` shared by the search specialist.
-    - Select the **top 3** entries that are most likely to answer the question.
+    - Select the strongest entries that align with the active `RoutePlan` budget. Never exceed `rank_top_k`.
     - For each selection, provide a concise rationale in the `reason` field explaining why it is relevant.
     - Respond with a `RankedSearchResults` structured object containing a `selections` list.
     - Preserve the `title`, `url`, `snippet`, and `favicon` from the chosen candidates; do not fabricate information.
@@ -382,6 +420,7 @@ def create_team():
     You are a helpful report-writing assistant.
 
     - Review the conversation, especially the fetched page content provided by the research specialist, and compose a comprehensive answer to the user.
+    - Pay attention to the active `RoutePlan` to understand whether this is a quick answer or a deep dive and tailor the depth of your response accordingly.
     - Synthesize key findings, compare sources when helpful, and acknowledge any gaps or uncertainties.
     - Present the answer in clear sections or paragraphs as appropriate.
     - When you finish, append the token `TERMINATE` on a new line to signal completion.
@@ -395,22 +434,36 @@ def create_team():
         model_client_stream=True,
     )
 
-    team = RoundRobinGroupChat(
-        [
-            today_date_agent,
-            search_query_agent,
-            google_search_agent,
-            search_rank_agent,
-            page_fetch_agent,
-            report_agent,
-        ],
-        custom_message_types=[
-            TodayDateMessage,
-            SearchQueryMessage,
-            SearchCandidatesMessage,
-            RankedSearchResultsMessage,
-            SearchResultMessage,
-        ],
+    builder = DiGraphBuilder()
+    builder.add_node(router_agent)
+    builder.add_node(google_search_agent)
+    builder.add_node(search_rank_agent)
+    builder.add_node(page_fetch_agent)
+    builder.add_node(report_agent)
+
+    builder.set_entry_point(router_agent)
+
+    builder.add_edge(
+        router_agent,
+        google_search_agent,
+        condition=lambda msg: isinstance(msg, RoutePlanMessage)
+        and msg.content.route == "deep_dive",
+    )
+    builder.add_edge(google_search_agent, search_rank_agent)
+    builder.add_edge(search_rank_agent, page_fetch_agent)
+    builder.add_edge(page_fetch_agent, report_agent)
+    builder.add_edge(
+        router_agent,
+        report_agent,
+        condition=lambda msg: isinstance(msg, RoutePlanMessage)
+        and msg.content.route == "quick_answer",
+    )
+
+    graph = builder.build()
+
+    team = GraphFlow(
+        participants=builder.get_participants(),
+        graph=graph,
         termination_condition=termination,
     )
 
@@ -447,6 +500,7 @@ async def ask(
         answer_chunks: List[str] = []
         fallback_segments: List[str] = []
         latest_citation_pages: List[Page] = []
+        active_plan: Optional[RoutePlan] = None
 
         def build_page(
             url: str,
@@ -483,6 +537,10 @@ async def ask(
         )
 
         async for event in state.team.run_stream(task=user_message):
+            if isinstance(event, RoutePlanMessage):
+                active_plan = event.content
+                continue
+
             if isinstance(event, SearchQueryMessage):
                 query = event.content.query.strip()
                 if query and query not in search_started:
@@ -519,6 +577,13 @@ async def ask(
                 ranked_pages: List[Page] = []
                 seen_rank_urls: Set[str] = set()
                 fetch_start_pages: List[Page] = []
+                rank_limit: Optional[int] = None
+                fetch_limit: Optional[int] = None
+
+                if active_plan is not None:
+                    rank_limit = max(0, active_plan.rank_top_k)
+                    fetch_limit = max(0, active_plan.fetch_page_limit)
+
                 for item in event.content.selections:
                     url = item.url.strip()
                     if not url or url in seen_rank_urls:
@@ -532,9 +597,13 @@ async def ask(
                     )
                     if ranked_page is not None:
                         seen_rank_urls.add(url)
-                        ranked_pages.append(ranked_page)
+                        if rank_limit is None or len(ranked_pages) < rank_limit:
+                            ranked_pages.append(ranked_page)
 
-                        if url not in fetch_announced:
+                        if (
+                            url not in fetch_announced
+                            and (fetch_limit is None or len(fetch_start_pages) < fetch_limit)
+                        ):
                             fetch_announced.add(url)
                             fetch_start_pages.append(ranked_page)
 
@@ -548,6 +617,9 @@ async def ask(
             if isinstance(event, SearchResultMessage):
                 fetched_pages: List[Page] = []
                 seen_fetch_urls: Set[str] = set()
+                fetch_limit: Optional[int] = None
+                if active_plan is not None:
+                    fetch_limit = max(0, active_plan.fetch_page_limit)
                 for result in event.content.results:
                     url = result.url.strip()
                     if not url or url in seen_fetch_urls:
@@ -562,7 +634,12 @@ async def ask(
                     )
                     if fetched_page is not None:
                         seen_fetch_urls.add(url)
-                        fetched_pages.append(fetched_page)
+                        if fetch_limit == 0:
+                            break
+                        if fetch_limit is None or len(fetched_pages) < fetch_limit:
+                            fetched_pages.append(fetched_page)
+                        if fetch_limit is not None and len(fetched_pages) >= fetch_limit:
+                            break
 
                 latest_citation_pages = fetched_pages
                 yield FetchEndMessage(
