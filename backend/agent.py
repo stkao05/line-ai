@@ -2,6 +2,7 @@
 import asyncio
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import AsyncIterator, Dict, List, Optional, Sequence, Set
 from uuid import uuid4
 
@@ -101,6 +102,51 @@ class SearchResult(BaseModel):
 
 
 SearchResultMessage = StructuredMessage[SearchResult]
+
+
+class TodayDate(BaseModel):
+    iso_date: str
+    human_readable: str
+    timezone: str
+
+
+TodayDateMessage = StructuredMessage[TodayDate]
+
+
+class TodayDateAgent(BaseChatAgent):
+    def __init__(self, name: str, *, description: str) -> None:
+        super().__init__(name, description=description)
+        self._last_announced_iso: Optional[str] = None
+
+    @property
+    def produced_message_types(self) -> Sequence[type[BaseChatMessage]]:
+        return (TodayDateMessage,)
+
+    async def on_messages(
+        self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
+    ) -> Response:
+        current_utc = datetime.now(timezone.utc)
+        iso_date = current_utc.date().isoformat()
+
+        if self._last_announced_iso == iso_date:
+            return Response()
+
+        self._last_announced_iso = iso_date
+
+        human_readable = current_utc.strftime("%B %d, %Y")
+        structured_message = TodayDateMessage(
+            content=TodayDate(
+                iso_date=iso_date,
+                human_readable=human_readable,
+                timezone="UTC",
+            ),
+            source=self.name,
+        )
+
+        return Response(chat_message=structured_message)
+
+    async def on_reset(self, cancellation_token: CancellationToken) -> None:
+        self._last_announced_iso = None
 
 
 class GoogleSearchExecutorAgent(BaseChatAgent):
@@ -274,10 +320,16 @@ class PageFetchAgent(BaseChatAgent):
 
 
 def create_team():
+    today_date_agent = TodayDateAgent(
+        name="today_date_agent",
+        description="Provide the current UTC date to assist with query timing",
+    )
+
     query_system_message = """
     You are a **search query planner**.
 
     - Review the user's question and craft the single most effective Google search query.
+    - A `TodayDate` structured message shares the current UTC date; use it when crafting time-sensitive queries.
     - Respond with a `SearchQuery` structured object containing the final query string in the `query` field.
     - Focus on precision keywords that will surface authoritative, up-to-date sources.
     - Do **not** answer the user's question directly or call any tools.
@@ -345,6 +397,7 @@ def create_team():
 
     team = RoundRobinGroupChat(
         [
+            today_date_agent,
             search_query_agent,
             google_search_agent,
             search_rank_agent,
@@ -352,6 +405,7 @@ def create_team():
             report_agent,
         ],
         custom_message_types=[
+            TodayDateMessage,
             SearchQueryMessage,
             SearchCandidatesMessage,
             RankedSearchResultsMessage,
@@ -406,7 +460,9 @@ async def ask(
             if title:
                 payload["title"] = title
             if snippet:
-                payload["snippet"] = snippet[:snippet_maxlen] if snippet_maxlen else snippet
+                payload["snippet"] = (
+                    snippet[:snippet_maxlen] if snippet_maxlen else snippet
+                )
             if favicon:
                 payload["favicon"] = favicon
 
@@ -524,7 +580,10 @@ async def ask(
                         yield AnswerDeltaMessage(type="answer-delta", delta=content)
                 continue
 
-            if isinstance(event, BaseTextChatMessage) and event.source == "report_agent":
+            if (
+                isinstance(event, BaseTextChatMessage)
+                and event.source == "report_agent"
+            ):
                 # Capture the final report for fallback when streaming chunks are unavailable.
                 if event.content:
                     fallback_segments.append(event.content)
@@ -535,7 +594,9 @@ async def ask(
 
                 if not final_answer:
                     if fallback_segments:
-                        final_answer = strip_termination_token("".join(fallback_segments))
+                        final_answer = strip_termination_token(
+                            "".join(fallback_segments)
+                        )
 
                 if not final_answer:
                     report_segments: List[str] = []
@@ -562,7 +623,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "Who won the UEFA Champions League in 2023?"
+        question = "What is this year Taipei top event"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):
