@@ -1,7 +1,9 @@
 # %%
 import asyncio
 import os
+from dataclasses import dataclass
 from typing import AsyncIterator, Dict, List, Optional, Sequence, Set
+from uuid import uuid4
 
 from autogen_agentchat.agents import AssistantAgent, BaseChatAgent
 from autogen_agentchat.base import Response, TaskResult
@@ -26,6 +28,7 @@ from message import (
     SearchEndMessage,
     SearchStartMessage,
     StreamMessage,
+    TurnStartMessage,
 )
 from pydantic import BaseModel, ValidationError
 from tools import fetch_page, google_search
@@ -36,6 +39,16 @@ model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key
 # gemini_api_key = os.getenv("GEMINI_API_KEY")
 # gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 # model_client = OpenAIChatCompletionClient(model=gemini_model, api_key=gemini_api_key)
+
+
+@dataclass
+class ConversationState:
+    team: RoundRobinGroupChat
+    lock: asyncio.Lock
+
+
+# Keeps in-memory state per conversation. Safe under single-process lifetime.
+_conversation_states: Dict[str, ConversationState] = {}
 
 
 class SearchQuery(BaseModel):
@@ -350,174 +363,198 @@ def create_team():
     return team
 
 
-async def ask(user_message: str) -> AsyncIterator[StreamMessage]:
+async def ask(
+    user_message: str, conversation_id: Optional[str] = None
+) -> AsyncIterator[StreamMessage]:
     if not user_message or not user_message.strip():
         raise ValueError("user_message must not be empty")
 
-    team = create_team()
+    normalized_conversation_id = (
+        conversation_id.strip() if conversation_id and conversation_id.strip() else None
+    )
+    conv_id = normalized_conversation_id or uuid4().hex
 
-    search_started: Set[str] = set()
-    search_completed: Set[str] = set()
-    rank_started = False
-    fetch_announced: Set[str] = set()
-    answer_chunks: List[str] = []
-    fallback_segments: List[str] = []
-    latest_citation_pages: List[Page] = []
+    state = _conversation_states.get(conv_id)
+    if state is None:
+        state = ConversationState(team=create_team(), lock=asyncio.Lock())
+        _conversation_states[conv_id] = state
 
-    def build_page(
-        url: str,
-        *,
-        title: Optional[str] = None,
-        snippet: Optional[str] = None,
-        favicon: Optional[str] = None,
-        snippet_maxlen: Optional[int] = 100,
-    ) -> Page | None:
-        payload: Dict[str, Optional[str]] = {"url": url}
-        if title:
-            payload["title"] = title
-        if snippet:
-            payload["snippet"] = snippet[:snippet_maxlen] if snippet_maxlen else snippet
-        if favicon:
-            payload["favicon"] = favicon
+    if state.lock.locked():
+        raise RuntimeError(
+            f"conversation '{conv_id}' is already processing another request"
+        )
 
-        try:
-            return Page.model_validate(payload)
-        except ValidationError:
-            return None
+    await state.lock.acquire()
+    try:
+        search_started: Set[str] = set()
+        search_completed: Set[str] = set()
+        rank_started = False
+        fetch_announced: Set[str] = set()
+        answer_chunks: List[str] = []
+        fallback_segments: List[str] = []
+        latest_citation_pages: List[Page] = []
 
-    def strip_termination_token(text: str) -> str:
-        trimmed = text.rstrip()
-        if trimmed.endswith("TERMINATE"):
-            trimmed = trimmed[: -len("TERMINATE")].rstrip()
-        return trimmed
+        def build_page(
+            url: str,
+            *,
+            title: Optional[str] = None,
+            snippet: Optional[str] = None,
+            favicon: Optional[str] = None,
+            snippet_maxlen: Optional[int] = 100,
+        ) -> Page | None:
+            payload: Dict[str, Optional[str]] = {"url": url}
+            if title:
+                payload["title"] = title
+            if snippet:
+                payload["snippet"] = snippet[:snippet_maxlen] if snippet_maxlen else snippet
+            if favicon:
+                payload["favicon"] = favicon
 
-    async for event in team.run_stream(task=user_message):
-        if isinstance(event, SearchQueryMessage):
-            query = event.content.query.strip()
-            if query and query not in search_started:
-                search_started.add(query)
-                yield SearchStartMessage(type="search.start", query=query)
-            continue
+            try:
+                return Page.model_validate(payload)
+            except ValidationError:
+                return None
 
-        if isinstance(event, SearchCandidatesMessage):
-            query = event.content.query.strip()
+        def strip_termination_token(text: str) -> str:
+            trimmed = text.rstrip()
+            if trimmed.endswith("TERMINATE"):
+                trimmed = trimmed[: -len("TERMINATE")].rstrip()
+            return trimmed
 
-            if query and query not in search_started:
-                search_started.add(query)
-                yield SearchStartMessage(type="search.start", query=query)
+        yield TurnStartMessage(
+            type="turn.start",
+            conversation_id=conv_id,
+        )
 
-            if query and query not in search_completed:
-                search_completed.add(query)
-                yield SearchEndMessage(
-                    type="search.end",
-                    query=query,
-                    results=len(event.content.candidates),
+        async for event in state.team.run_stream(task=user_message):
+            if isinstance(event, SearchQueryMessage):
+                query = event.content.query.strip()
+                if query and query not in search_started:
+                    search_started.add(query)
+                    yield SearchStartMessage(type="search.start", query=query)
+                continue
+
+            if isinstance(event, SearchCandidatesMessage):
+                query = event.content.query.strip()
+
+                if query and query not in search_started:
+                    search_started.add(query)
+                    yield SearchStartMessage(type="search.start", query=query)
+
+                if query and query not in search_completed:
+                    search_completed.add(query)
+                    yield SearchEndMessage(
+                        type="search.end",
+                        query=query,
+                        results=len(event.content.candidates),
+                    )
+
+                if not rank_started:
+                    rank_started = True
+                    yield RankStartMessage(type="rank.start")
+
+                continue
+
+            if isinstance(event, RankedSearchResultsMessage):
+                if not rank_started:
+                    rank_started = True
+                    yield RankStartMessage(type="rank.start")
+
+                ranked_pages: List[Page] = []
+                seen_rank_urls: Set[str] = set()
+                fetch_start_pages: List[Page] = []
+                for item in event.content.selections:
+                    url = item.url.strip()
+                    if not url or url in seen_rank_urls:
+                        continue
+
+                    ranked_page = build_page(
+                        url,
+                        title=item.title.strip() if item.title else None,
+                        snippet=item.snippet.strip() if item.snippet else None,
+                        favicon=item.favicon.strip() if item.favicon else None,
+                    )
+                    if ranked_page is not None:
+                        seen_rank_urls.add(url)
+                        ranked_pages.append(ranked_page)
+
+                        if url not in fetch_announced:
+                            fetch_announced.add(url)
+                            fetch_start_pages.append(ranked_page)
+
+                yield RankEndMessage(type="rank.end", pages=ranked_pages)
+
+                if fetch_start_pages:
+                    yield FetchStartMessage(type="fetch.start", pages=fetch_start_pages)
+
+                continue
+
+            if isinstance(event, SearchResultMessage):
+                fetched_pages: List[Page] = []
+                seen_fetch_urls: Set[str] = set()
+                for result in event.content.results:
+                    url = result.url.strip()
+                    if not url or url in seen_fetch_urls:
+                        continue
+
+                    detail = (result.detail_summary or result.snippet or "").strip()
+                    fetched_page = build_page(
+                        url,
+                        title=result.title.strip() if result.title else None,
+                        snippet=detail or None,
+                        favicon=result.favicon.strip() if result.favicon else None,
+                    )
+                    if fetched_page is not None:
+                        seen_fetch_urls.add(url)
+                        fetched_pages.append(fetched_page)
+
+                latest_citation_pages = fetched_pages
+                yield FetchEndMessage(
+                    type="fetch.end",
+                    pages=fetched_pages or None,
                 )
 
-            if not rank_started:
-                rank_started = True
-                yield RankStartMessage(type="rank.start")
+                continue
 
-            continue
+            if isinstance(event, ModelClientStreamingChunkEvent):
+                if event.source == "report_agent":
+                    content = event.content or ""
+                    if content:
+                        answer_chunks.append(content)
+                        yield AnswerDeltaMessage(type="answer-delta", delta=content)
+                continue
 
-        if isinstance(event, RankedSearchResultsMessage):
-            if not rank_started:
-                rank_started = True
-                yield RankStartMessage(type="rank.start")
+            if isinstance(event, BaseTextChatMessage) and event.source == "report_agent":
+                # Capture the final report for fallback when streaming chunks are unavailable.
+                if event.content:
+                    fallback_segments.append(event.content)
+                continue
 
-            ranked_pages: List[Page] = []
-            seen_rank_urls: Set[str] = set()
-            fetch_start_pages: List[Page] = []
-            for item in event.content.selections:
-                url = item.url.strip()
-                if not url or url in seen_rank_urls:
-                    continue
+            if isinstance(event, TaskResult):
+                final_answer = strip_termination_token("".join(answer_chunks))
 
-                ranked_page = build_page(
-                    url,
-                    title=item.title.strip() if item.title else None,
-                    snippet=item.snippet.strip() if item.snippet else None,
-                    favicon=item.favicon.strip() if item.favicon else None,
+                if not final_answer:
+                    if fallback_segments:
+                        final_answer = strip_termination_token("".join(fallback_segments))
+
+                if not final_answer:
+                    report_segments: List[str] = []
+                    for message in event.messages:
+                        if (
+                            isinstance(message, BaseTextChatMessage)
+                            and message.source == "report_agent"
+                        ):
+                            report_segments.append(message.content)
+                    final_answer = strip_termination_token("".join(report_segments))
+
+                yield AnswerMessage(
+                    type="answer",
+                    answer=final_answer,
+                    citations=latest_citation_pages or None,
                 )
-                if ranked_page is not None:
-                    seen_rank_urls.add(url)
-                    ranked_pages.append(ranked_page)
-
-                    if url not in fetch_announced:
-                        fetch_announced.add(url)
-                        fetch_start_pages.append(ranked_page)
-
-            yield RankEndMessage(type="rank.end", pages=ranked_pages)
-
-            if fetch_start_pages:
-                yield FetchStartMessage(type="fetch.start", pages=fetch_start_pages)
-
-            continue
-
-        if isinstance(event, SearchResultMessage):
-            fetched_pages: List[Page] = []
-            seen_fetch_urls: Set[str] = set()
-            for result in event.content.results:
-                url = result.url.strip()
-                if not url or url in seen_fetch_urls:
-                    continue
-
-                detail = (result.detail_summary or result.snippet or "").strip()
-                fetched_page = build_page(
-                    url,
-                    title=result.title.strip() if result.title else None,
-                    snippet=detail or None,
-                    favicon=result.favicon.strip() if result.favicon else None,
-                )
-                if fetched_page is not None:
-                    seen_fetch_urls.add(url)
-                    fetched_pages.append(fetched_page)
-
-            latest_citation_pages = fetched_pages
-            yield FetchEndMessage(
-                type="fetch.end",
-                pages=fetched_pages or None,
-            )
-
-            continue
-
-        if isinstance(event, ModelClientStreamingChunkEvent):
-            if event.source == "report_agent":
-                content = event.content or ""
-                if content:
-                    answer_chunks.append(content)
-                    yield AnswerDeltaMessage(type="answer-delta", delta=content)
-            continue
-
-        if isinstance(event, BaseTextChatMessage) and event.source == "report_agent":
-            # Capture the final report for fallback when streaming chunks are unavailable.
-            if event.content:
-                fallback_segments.append(event.content)
-            continue
-
-        if isinstance(event, TaskResult):
-            final_answer = strip_termination_token("".join(answer_chunks))
-
-            if not final_answer:
-                if fallback_segments:
-                    final_answer = strip_termination_token("".join(fallback_segments))
-
-            if not final_answer:
-                report_segments: List[str] = []
-                for message in event.messages:
-                    if (
-                        isinstance(message, BaseTextChatMessage)
-                        and message.source == "report_agent"
-                    ):
-                        report_segments.append(message.content)
-                final_answer = strip_termination_token("".join(report_segments))
-
-            yield AnswerMessage(
-                type="answer",
-                answer=final_answer,
-                citations=latest_citation_pages or None,
-            )
-            break
+                break
+    finally:
+        state.lock.release()
 
 
 # %%
@@ -527,7 +564,16 @@ if __name__ == "__main__":
     async def _demo() -> None:
         question = "Who won the UEFA Champions League in 2023?"
         print(f"Running trial ask() for: {question}")
+        conversation_id: str | None = None
         async for message in ask(question):
             print(message.model_dump())
+            if isinstance(message, TurnStartMessage):
+                conversation_id = message.conversation_id
+
+        if conversation_id:
+            follow_up = "Who did they face in the final?"
+            print(f"\nRunning follow-up ask() for: {follow_up}")
+            async for message in ask(follow_up, conversation_id=conversation_id):
+                print(message.model_dump())
 
     asyncio.run(_demo())

@@ -23,6 +23,16 @@ logging.basicConfig(level=logging.WARNING)
 CHAT_STREAM_SCHEMA, CHAT_STREAM_DEFINITIONS = SseMessageAdapter.openapi_schema()
 
 CHAT_STREAM_EXAMPLES = {
+    "turn_start": {
+        "summary": "Turn metadata",
+        "value": {
+            "event": "message",
+            "data": {
+                "type": "turn.start",
+                "conversation_id": "example-conversation-id",
+            },
+        },
+    },
     "answer_chunk": {
         "summary": "Answer delta chunk",
         "value": {
@@ -120,14 +130,16 @@ async def chat_type() -> dict[str, list[str]]:
         }
     },
 )
-async def chat(request: Request, user_message: str) -> StreamingResponse:
+async def chat(
+    request: Request, user_message: str, conversation_id: str | None = None
+) -> StreamingResponse:
     if not user_message.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
 
     async def event_stream() -> AsyncIterator[str]:
         disconnected = False
         try:
-            async for event in ask(user_message):
+            async for event in ask(user_message, conversation_id=conversation_id):
                 if await request.is_disconnected():
                     disconnected = True
                     break

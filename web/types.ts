@@ -5,6 +5,11 @@ export type PageSummary = {
   favicon?: string | null;
 };
 
+type TurnStartMessage = {
+  type: "turn.start";
+  conversation_id: string;
+};
+
 type SearchStartMessage = {
   type: "search.start";
   query: string;
@@ -47,6 +52,7 @@ type AnswerMessage = {
 };
 
 export type StreamMessage =
+  | TurnStartMessage
   | SearchStartMessage
   | SearchEndMessage
   | RankStartMessage

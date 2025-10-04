@@ -24,6 +24,7 @@ function isStreamMessage(value: unknown): value is StreamMessage {
 
   const { type } = value as { type?: unknown };
   return (
+    type === "turn.start" ||
     type === "search.start" ||
     type === "search.end" ||
     type === "rank.start" ||
@@ -43,6 +44,7 @@ export function useChat(): UseChatReturn {
   const streamRef = useRef<EventSource | null>(null);
   const cleanupRef = useRef<((nextStatus: ChatStatus) => void) | null>(null);
   const activeTurnIndexRef = useRef<number | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
 
   const cancel = useCallback(() => {
     cleanupRef.current?.("ready");
@@ -68,6 +70,9 @@ export function useChat(): UseChatReturn {
     }
 
     const params = new URLSearchParams({ user_message: question });
+    if (conversationIdRef.current) {
+      params.set("conversation_id", conversationIdRef.current);
+    }
     const streamUrl = `${baseUrl}/chat?${params.toString()}`;
 
     const stream = new EventSource(streamUrl);
@@ -95,9 +100,17 @@ export function useChat(): UseChatReturn {
     }
 
     function appendMessage(message: StreamMessage) {
+      const turnIndex = activeTurnIndexRef.current;
+      if (turnIndex === null) {
+        return;
+      }
+
+      if (message.type === "turn.start") {
+        conversationIdRef.current = message.conversation_id;
+      }
+
       setTurns((previous) => {
-        const turnIndex = activeTurnIndexRef.current;
-        if (turnIndex === null || turnIndex < 0 || turnIndex >= previous.length) {
+        if (turnIndex < 0 || turnIndex >= previous.length) {
           return previous;
         }
 
