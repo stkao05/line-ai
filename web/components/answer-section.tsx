@@ -41,8 +41,8 @@ export function AnswerSection({
                 target="_blank"
                 rel="noreferrer"
               >
-                <p className="text-sm font-semibold">{reference.title}</p>
-                <p className="mt-1 text-xs text-zinc-400">
+                <p className="text-sm font-semibold break-words">{reference.title}</p>
+                <p className="mt-1 text-xs text-zinc-400 break-words">
                   {reference.description}
                 </p>
               </a>
