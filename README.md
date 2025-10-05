@@ -2,14 +2,7 @@
 
 ## Overview
 
-Line AI is a retrieval-augmented research assistant that streams every step of its reasoning. A FastAPI back end orchestrates a structured AutoGen GraphFlow of agents, and a Next.js interface consumes the server-sent events (SSE) stream to visualise searches, page fetches, and answers in real time.
-
-## Highlights
-
-- Structured multi-agent workflow routing between quick answers and deep-dive research plans.
-- Streaming `/chat` SSE endpoint surfacing search, rank, fetch, and answer progress updates.
-- Next.js 15 web app with a timeline of agent activity, suggested prompts, and citation previews.
-- Pluggable tool layer with Serper-powered Google search and HTML page fetching.
+Live demo: https://line-ai.up.railway.app
 
 ## Setup
 
@@ -23,11 +16,19 @@ Line AI is a retrieval-augmented research assistant that streams every step of i
 
 1. Create and activate a Python environment (conda: `conda env create -f backend/environment.yml`, or venv: `python -m venv .venv && source .venv/bin/activate`).
 2. Install dependencies: `pip install -r backend/requirements.txt`.
-3. Export required variables:
+3. Export required environment variables:
    - `OPENAI_API_KEY`: OpenAI project key with access to GPT-4o and GPT-4.1.
-   - `SERPER_API_KEY`: Serper.dev key used for Google search.
-   - `CORS_ALLOW_ORIGIN` (optional): Front-end origin allowed to call the API.
-4. Start the API: `uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000`.
+   - `SERPER_API_KEY`: Serper.dev key used for Google Search.
+   - `CORS_ALLOW_ORIGIN`: Front-end origin allowed to call the API.
+4. Start the API:
+
+```
+# development (from the backend folder)
+cd backend && fastapi dev main.py
+
+# production (from the repo root)
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
 
 ### Web App
 
@@ -37,48 +38,30 @@ Line AI is a retrieval-augmented research assistant that streams every step of i
 3. Install dependencies: `npm install`.
 4. Launch the dev server: `npm run dev` (defaults to `http://localhost:3000`).
 
-### Running the Stack
-
-- Keep the FastAPI server running on port 8000.
-- Start the Next.js dev server and open http://localhost:3000.
-- Ask a question—each turn renders the live agent workflow along with the final answer and citations.
-
-## Environment Variables
-
-### Backend
-
-- `OPENAI_API_KEY`
-- `SERPER_API_KEY`
-- `CORS_ALLOW_ORIGIN` (optional, e.g. `http://localhost:3000`)
-
-### Frontend
-
-- `NEXT_PUBLIC_CHAT_BASE_URL` (e.g. `http://127.0.0.1:8000`)
-
 ## Architectural Overview
 
-The back end exposes a small FastAPI surface (`backend/main.py`):
+The system consists of a FastAPI back end that orchestrates an Autogen multi‑agent workflow, and a Next.js front end that streams responses via Server‑Sent Events (SSE).
 
-- `GET /`: Health check.
-- `GET /chat/event-type`: Lists the SSE message names supported by the client.
-- `GET /chat`: Streams chat progress events. Requires `user_message`, optional `conversation_id` for follow-up turns.
+Backend
 
-`backend/agent.py` builds the AutoGen GraphFlow that powers `/chat`:
+- Async‑first (`asyncio`) for high concurrency.
+- Multi‑turn conversations: previous turns are kept in memory per `conversation_id`.
+- Stateless clients pass the `conversation_id` from the first turn to preserve context.
+- Workflow routing is implemented with Autogen GraphFlow; details below.
 
-1. A `router_agent` inspects the user request and emits a `RoutePlan` that chooses between a quick answer and a deep research route.
-2. Quick questions stream responses directly from `quick_answer_agent` using a lightweight GPT-4.1 model.
-3. Deep-dive requests trigger a research plan (`ResearchPlan`) with suggested queries, ranking and fetch limits.
-4. The workflow fans out to specialist agents:
-   - `google_search_agent` executes Serper queries and emits `SearchCandidates`.
-   - `search_rank_agent` scores candidates and suggests the most relevant pages.
-   - `page_fetch_agent` retrieves page content (trimmed to 4k characters) for citations.
-   - `report_agent` synthesises the final answer, while `today_date_agent` keeps the team aware of the current date.
-5. The orchestrator converts agent events to strongly typed stream messages (`backend/message.py`) so the UI can render progress, citations, and the final answer.
+Frontend
 
-Because the conversation state is cached in-memory, providing the `conversation_id` returned in the first turn lets the system maintain multi-turn context.
+- Next.js app with static pre‑rendering.
+- Streams tokens from the API via SSE.
+- OpenAPI schema provides type safety between front end and back end.
 
 ## Agent Workflow
-The router selects between a quick answer path and a deep-dive research path. The diagram below reflects the graph defined in `backend/agent.py`.
+
+The agent architecture is route‑based with three paths:
+
+- Quick answer: Answer directly from model knowledge when sufficient.
+- Deep dive: Plan searches, use Serper to gather results, rank and fetch pages, then compose a citation‑ready report.
+- Coding: Specialized coding agent for programming tasks.
 
 ```mermaid
 flowchart LR
@@ -95,21 +78,58 @@ flowchart LR
     PF --> RE[report_agent]
     RE --> A
 
+    R -- coding --> CD[coding_agent]
+    CD --> A
+
     class TD side;
     classDef side fill:#1f2937,stroke:#3f3f46,color:#e5e7eb;
 ```
 
-SSE events emitted along the way (for the UI): `turn.start`, `search.start`, `search.end`, `rank.start`, `rank.end`, `fetch.start`, `fetch.end`, `answer-delta`, `answer`.
+Agent Overview
 
-## Agent Overview
-
-- `router_agent`: Chooses the workflow route (`quick_answer` vs `deep_dive`).
-- `research_planner_agent`: Designs search queries, ranking budget, and page fetch limits for deep dives.
+- `router_agent`: Chooses the workflow route (`quick_answer`, `deep_dive`, or `coding`).
+- `research_planner_agent`: Designs search queries, ranking budget, and page‑fetch limits for deep dives.
 - `google_search_agent`: Calls Serper to produce candidate search results.
-- `search_rank_agent`: Picks high-value results and justifies each selection.
-- `page_fetch_agent`: Fetches and normalises page snippets for citations.
-- `today_date_agent`: Shares the current UTC date so plans stay time-aware.
+- `search_rank_agent`: Picks high‑value results and justifies each selection.
+- `page_fetch_agent`: Fetches and normalizes page snippets for citations.
+- `today_date_agent`: Shares the current UTC date so plans stay time‑aware.
 - `quick_answer_agent`: Streams concise answers when external research is unnecessary.
+- `coding_agent`: Produces code and brief explanations for programming tasks.
 - `report_agent`: Writes the comprehensive response and emits the terminating token.
 
-Each agent can be extended or swapped—adjust their system prompts or plug in additional tools in `backend/agent.py` and `backend/tools.py`.
+## AI Prompt
+
+I used AI coding tools (Cursor + OpenAI Codex) for this assignment. Below are example prompts that illustrate my typical workflow.
+
+1. Discuss, review, and iterate
+
+I start by asking for a high‑level outline and design. Once aligned on the direction, I ask the agent to implement changes in small, verifiable steps (e.g., data model, backend, frontend).
+
+```
+user: I think the current messages are too specific. I’d like to simplify and generalize the message types. Many existing messages could share a single generic type. Here’s a rough outline — am I missing anything important?
+
+agent: ...
+
+user: Looks good—let’s proceed with the backend message type changes.
+
+agent: ...
+
+user: Great, now let’s update the frontend to use the new message types.
+```
+
+2. Handling knowledge gaps
+
+LLMs may have outdated knowledge of tools and frameworks. For example, the OpenAI Codex model has knowledge of Autogen 2.x, whereas the latest Autogen is 7.x. To bridge this gap, I sometimes:
+
+- Include an LLM‑friendly text export of the relevant docs in context.
+- Provide the library source code and let the LLM infer usage.
+
+```
+I’d like to extend the current agent to add routing: a router agent inspects the user question and selects one of three branches:
+- quick answer
+- deep dive (web search)
+- coding task
+
+Your Autogen knowledge may be outdated—please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference to implement this.
+```
+
