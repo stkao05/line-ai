@@ -26,13 +26,6 @@ type StepAnswerDeltaMessage = Extract<StreamMessage, { type: "step.answer.delta"
 type StepAnswerEndMessage = Extract<StreamMessage, { type: "step.answer.end" }>;
 type AnswerMessage = Extract<StreamMessage, { type: "answer" }>;
 
-const PLANNING_STEP_TITLE = "Planning the appropriate route";
-const SEARCH_STEP_TITLE = "Running web search";
-const RANK_STEP_TITLE = "Ranking candidate sources";
-const FETCH_STEP_TITLE = "Fetching supporting details";
-const ANSWER_STEP_TITLE = "Answering the question";
-const CODING_STEP_TITLE = "Coding agent thinking";
-
 function getLast<T>(items: readonly T[]): T | undefined {
   if (items.length === 0) {
     return undefined;
@@ -158,33 +151,6 @@ function uniqueDescriptions(
   return result;
 }
 
-function collectStepTimelineDescriptions(
-  messages: StreamMessage[],
-  title: string
-): string[] {
-  const timeline: string[] = [];
-
-  for (const message of messages) {
-    if (
-      (message.type === "step.start" ||
-        message.type === "step.status" ||
-        message.type === "step.end") &&
-      message.title === title
-    ) {
-      const rawDescription = (
-        message as StepStartMessage | StepStatusMessage | StepEndMessage
-      ).description;
-      const normalized = rawDescription?.trim();
-      if (!normalized || timeline.includes(normalized)) {
-        continue;
-      }
-      timeline.push(normalized);
-    }
-  }
-
-  return timeline;
-}
-
 function renderDescriptionItems(items: string[]): ReactNode {
   return (
     <ul className="space-y-1">
@@ -195,160 +161,216 @@ function renderDescriptionItems(items: string[]): ReactNode {
   );
 }
 
+type StepMessage =
+  | StepStartMessage
+  | StepStatusMessage
+  | StepEndMessage
+  | StepFetchStartMessage
+  | StepFetchEndMessage
+  | StepAnswerStartMessage
+  | StepAnswerDeltaMessage
+  | StepAnswerEndMessage;
+
+type StepKind = "generic" | "fetch" | "answer";
+
+type StepAccumulator = {
+  title: string;
+  descriptions: string[];
+  fetchPages?: PageSummary[];
+  kind: StepKind;
+  hasStart: boolean;
+  hasEnd: boolean;
+  hasAnswerDelta: boolean;
+};
+
+function isStepMessage(message: StreamMessage): message is StepMessage {
+  switch (message.type) {
+    case "step.start":
+    case "step.status":
+    case "step.end":
+    case "step.fetch.start":
+    case "step.fetch.end":
+    case "step.answer.start":
+    case "step.answer.delta":
+    case "step.answer.end":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function determineStepKind(message: StepMessage): StepKind {
+  if (message.type.startsWith("step.fetch")) {
+    return "fetch";
+  }
+  if (message.type.startsWith("step.answer")) {
+    return "answer";
+  }
+  return "generic";
+}
+
+function mergeStepKind(current: StepKind, incoming: StepKind): StepKind {
+  if (current === incoming) {
+    return current;
+  }
+  if (current === "generic") {
+    return incoming;
+  }
+  if (incoming === "generic") {
+    return current;
+  }
+  return current;
+}
+
+function isStartMessage(message: StepMessage): boolean {
+  return (
+    message.type === "step.start" ||
+    message.type === "step.fetch.start" ||
+    message.type === "step.answer.start"
+  );
+}
+
+function isEndMessage(message: StepMessage): boolean {
+  return (
+    message.type === "step.end" ||
+    message.type === "step.fetch.end" ||
+    message.type === "step.answer.end"
+  );
+}
+
 function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
-  const stepStarts = messages.filter(
-    (message): message is StepStartMessage => message.type === "step.start"
-  );
-  const stepEnds = messages.filter(
-    (message): message is StepEndMessage => message.type === "step.end"
-  );
-  const fetchStarts = messages.filter(
-    (message): message is StepFetchStartMessage => message.type === "step.fetch.start"
-  );
-  const fetchEnds = messages.filter(
-    (message): message is StepFetchEndMessage => message.type === "step.fetch.end"
-  );
-  const answerStarts = messages.filter(
-    (message): message is StepAnswerStartMessage => message.type === "step.answer.start"
-  );
-  const answerDeltas = messages.filter(
-    (message): message is StepAnswerDeltaMessage =>
-      message.type === "step.answer.delta"
-  );
-  const answerEnds = messages.filter(
-    (message): message is StepAnswerEndMessage => message.type === "step.answer.end"
-  );
-  const answerMessages = messages.filter(
+  const steps: StepAccumulator[] = [];
+
+  function findOpenStep(title: string): StepAccumulator | undefined {
+    for (let index = steps.length - 1; index >= 0; index -= 1) {
+      const candidate = steps[index];
+      if (candidate.title === title && !candidate.hasEnd) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  function createStep(message: StepMessage): StepAccumulator {
+    const step: StepAccumulator = {
+      title: message.title,
+      descriptions: [],
+      kind: determineStepKind(message),
+      hasStart: false,
+      hasEnd: false,
+      hasAnswerDelta: false,
+    };
+    steps.push(step);
+    return step;
+  }
+
+  function resolveStep(message: StepMessage): StepAccumulator {
+    if (isStartMessage(message)) {
+      return createStep(message);
+    }
+    return findOpenStep(message.title) ?? createStep(message);
+  }
+
+  for (const message of messages) {
+    if (!isStepMessage(message)) {
+      continue;
+    }
+
+    const step = resolveStep(message);
+    step.kind = mergeStepKind(step.kind, determineStepKind(message));
+    step.hasStart = true;
+
+    if (isEndMessage(message)) {
+      step.hasEnd = true;
+    }
+
+    switch (message.type) {
+      case "step.start":
+      case "step.status":
+      case "step.end":
+        if (message.description) {
+          step.descriptions.push(message.description);
+        }
+        break;
+      case "step.fetch.start":
+      case "step.fetch.end":
+        step.fetchPages = message.pages;
+        break;
+      case "step.answer.start":
+        if (message.description) {
+          step.descriptions.push(message.description);
+        }
+        break;
+      case "step.answer.delta":
+        step.hasAnswerDelta = true;
+        break;
+      case "step.answer.end":
+        break;
+    }
+  }
+
+  const hasFinalAnswer = messages.some(
     (message): message is AnswerMessage => message.type === "answer"
   );
 
-  const planningStarts = stepStarts.filter(
-    (message) => message.title === PLANNING_STEP_TITLE
-  );
-  const planningEnds = stepEnds.filter(
-    (message) => message.title === PLANNING_STEP_TITLE
-  );
-  const planningTimeline = collectStepTimelineDescriptions(
-    messages,
-    PLANNING_STEP_TITLE
-  );
-  const planningDetail =
-    getLast(planningTimeline) ?? "Waiting for planning step.";
-  const planningStatus = computeStepStatus(
-    planningStarts.length > 0,
-    planningEnds.length > 0 && planningEnds.length >= planningStarts.length
-  );
+  if (hasFinalAnswer) {
+    for (let index = steps.length - 1; index >= 0; index -= 1) {
+      const candidate = steps[index];
+      if (candidate.kind === "answer") {
+        candidate.hasEnd = true;
+        break;
+      }
+    }
+  }
 
-  const searchStarts = stepStarts.filter(
-    (message) => message.title === SEARCH_STEP_TITLE
-  );
-  const searchEnds = stepEnds.filter(
-    (message) => message.title === SEARCH_STEP_TITLE
-  );
-  const searchTimeline = collectStepTimelineDescriptions(
-    messages,
-    SEARCH_STEP_TITLE
-  );
-  const searchDetail: ReactNode = searchTimeline.length > 0
-    ? renderDescriptionItems(searchTimeline)
-    : "Waiting for search to begin.";
-  const searchStatus = computeStepStatus(
-    searchStarts.length > 0,
-    searchEnds.length > 0 && searchEnds.length >= searchStarts.length
-  );
+  return steps.map((step) => {
+    const status = computeStepStatus(step.hasStart, step.hasEnd);
+    const descriptions = uniqueDescriptions(step.descriptions);
 
-  const rankStarts = stepStarts.filter(
-    (message) => message.title === RANK_STEP_TITLE
-  );
-  const rankEnds = stepEnds.filter(
-    (message) => message.title === RANK_STEP_TITLE
-  );
-  const rankTimeline = collectStepTimelineDescriptions(
-    messages,
-    RANK_STEP_TITLE
-  );
-  const rankDetail =
-    getLast(rankTimeline) ?? "Waiting for ranking step.";
-  const rankStatus = computeStepStatus(
-    rankStarts.length > 0,
-    rankEnds.length > 0 && rankEnds.length >= rankStarts.length
-  );
+    let detail: ReactNode;
 
-  const codingStarts = stepStarts.filter(
-    (message) => message.title === CODING_STEP_TITLE
-  );
-  const codingEnds = stepEnds.filter(
-    (message) => message.title === CODING_STEP_TITLE
-  );
-  const codingTimeline = collectStepTimelineDescriptions(
-    messages,
-    CODING_STEP_TITLE
-  );
-  const codingDetail =
-    getLast(codingTimeline) ?? "Waiting for coding step.";
-  const codingStatus = computeStepStatus(
-    codingStarts.length > 0,
-    codingEnds.length > 0 && codingEnds.length >= codingStarts.length
-  );
+    if (step.kind === "fetch") {
+      const pages = step.fetchPages ?? [];
+      if (pages.length > 0) {
+        detail = renderPageList(pages, { variant: "fetch" });
+      } else if (status === "active") {
+        detail = "Fetching selected sources…";
+      } else if (status === "complete") {
+        detail = "Fetch completed.";
+      } else {
+        detail = "Awaiting fetch updates.";
+      }
+    } else if (step.kind === "answer") {
+      const intro = descriptions[0];
+      if (status === "complete") {
+        detail = "Final response prepared.";
+      } else if (step.hasAnswerDelta) {
+        detail = intro ?? "Composing response…";
+      } else if (intro) {
+        detail = intro;
+      } else {
+        detail = "Preparing response…";
+      }
+    } else {
+      if (descriptions.length > 1) {
+        detail = renderDescriptionItems(descriptions);
+      } else if (descriptions.length === 1) {
+        detail = descriptions[0];
+      } else if (status === "active") {
+        detail = "In progress…";
+      } else if (status === "complete") {
+        detail = "Step completed.";
+      } else {
+        detail = "Awaiting updates.";
+      }
+    }
 
-  const latestFetchEnd = getLast(fetchEnds);
-  const latestFetchStart = getLast(fetchStarts);
-  const fetchPages = latestFetchEnd?.pages ?? latestFetchStart?.pages ?? [];
-  const fetchStatus = computeStepStatus(
-    fetchStarts.length > 0,
-    fetchEnds.length > 0 && fetchEnds.length >= fetchStarts.length
-  );
-  const fetchDetail: ReactNode = fetchPages.length > 0
-    ? renderPageList(fetchPages, { variant: "fetch" })
-    : fetchStatus === "active"
-      ? "Fetching selected sources…"
-      : "Waiting for document fetch step.";
-
-  const answerHasStarted =
-    answerStarts.length > 0 || answerDeltas.length > 0 || answerMessages.length > 0;
-  const answerHasCompleted =
-    answerMessages.length > 0 || answerEnds.length > 0;
-  const answerStatus = computeStepStatus(answerHasStarted, answerHasCompleted);
-  const answerIntro =
-    uniqueDescriptions(answerStarts.map((message) => message.description))[0];
-  const answerDetail = answerHasCompleted
-    ? "Final response prepared."
-    : answerDeltas.length > 0
-      ? answerIntro ?? "Composing response…"
-      : answerIntro ?? "Waiting for synthesis step.";
-
-  return [
-    {
-      title: PLANNING_STEP_TITLE,
-      status: planningStatus,
-      detail: planningDetail,
-    },
-    {
-      title: SEARCH_STEP_TITLE,
-      status: searchStatus,
-      detail: searchDetail,
-    },
-    {
-      title: RANK_STEP_TITLE,
-      status: rankStatus,
-      detail: rankDetail,
-    },
-    {
-      title: CODING_STEP_TITLE,
-      status: codingStatus,
-      detail: codingDetail,
-    },
-    {
-      title: FETCH_STEP_TITLE,
-      status: fetchStatus,
-      detail: fetchDetail,
-    },
-    {
-      title: ANSWER_STEP_TITLE,
-      status: answerStatus,
-      detail: answerDetail,
-    },
-  ];
+    return {
+      title: step.title,
+      status,
+      detail,
+    };
+  });
 }
 
 function deriveReferencesFromPages(

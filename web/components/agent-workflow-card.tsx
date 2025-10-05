@@ -57,7 +57,7 @@ function WorkflowTrack({ steps }: WorkflowTrackProps) {
         }`;
 
         return (
-          <div key={step.title} className="flex items-start gap-4">
+          <div key={`${step.title}-${index}`} className="flex items-start gap-4">
             <div className="flex flex-col items-center self-stretch">
               <span className="relative flex h-6 w-6 items-center justify-center">
                 {isActive ? (
