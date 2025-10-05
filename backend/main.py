@@ -110,11 +110,6 @@ async def root() -> dict[str, str]:
     return {"message": "Hello World"}
 
 
-@app.get("/chat/event-type")
-async def chat_type() -> dict[str, list[str]]:
-    return {"events": [event.value for event in SseEvent]}
-
-
 @app.get(
     "/chat",
     response_class=StreamingResponse,

@@ -1,85 +1,16 @@
-export type PageSummary = {
-  url: string;
-  title?: string | null;
-  snippet?: string | null;
-  favicon?: string | null;
-};
+import type { components } from "./api-types";
 
-type TurnStartMessage = {
-  type: "turn.start";
-  conversation_id: string;
-};
+type Schemas = components["schemas"];
 
-type SearchStartMessage = {
-  type: "search.start";
-  query: string;
-};
+export type PageSummary = Schemas["Page"];
 
-type SearchEndMessage = {
-  type: "search.end";
-  query: string;
-  results: number;
-};
+export type StreamMessage = Schemas["ChatStreamEnvelope"]["data"];
 
-type RankStartMessage = {
-  type: "rank.start";
-};
+export type ChatStreamEnvelope = Schemas["ChatStreamEnvelope"];
 
-type RankEndMessage = {
-  type: "rank.end";
-  pages: PageSummary[];
-};
+export type ChatErrorEnvelope = Schemas["ChatErrorEnvelope"];
 
-type FetchStartMessage = {
-  type: "fetch.start";
-  pages: PageSummary[];
-};
-
-type FetchEndMessage = {
-  type: "fetch.end";
-  pages?: PageSummary[] | null;
-};
-
-type AnswerDeltaMessage = {
-  type: "answer-delta";
-  delta: string;
-};
-
-type AnswerMessage = {
-  type: "answer";
-  answer: string;
-  citations?: PageSummary[] | null;
-};
-
-export type StreamMessage =
-  | TurnStartMessage
-  | SearchStartMessage
-  | SearchEndMessage
-  | RankStartMessage
-  | RankEndMessage
-  | FetchStartMessage
-  | FetchEndMessage
-  | AnswerDeltaMessage
-  | AnswerMessage;
-
-export type ChatStreamEnvelope = {
-  event: "message";
-  data: StreamMessage;
-};
-
-export type ChatErrorEnvelope = {
-  event: "error";
-  data: {
-    error: string;
-  };
-};
-
-export type ChatDoneEnvelope = {
-  event: "end";
-  data: {
-    message: "[DONE]";
-  };
-};
+export type ChatDoneEnvelope = Schemas["ChatDoneEnvelope"];
 
 export type ChatSseEvent =
   | ChatStreamEnvelope
