@@ -19,51 +19,14 @@ from message import (
 from workflow import ask
 
 logging.basicConfig(level=logging.WARNING)
-
-CHAT_STREAM_SCHEMA, CHAT_STREAM_DEFINITIONS = SseMessageAdapter.openapi_schema()
-
-CHAT_STREAM_EXAMPLES = {
-    "turn_start": {
-        "summary": "Turn metadata",
-        "value": {
-            "event": "message",
-            "data": {
-                "type": "turn.start",
-                "conversation_id": "example-conversation-id",
-            },
-        },
-    },
-    "answer_chunk": {
-        "summary": "Answer delta chunk",
-        "value": {
-            "event": "message",
-            "data": {
-                "type": "answer-delta",
-                "delta": "Manchester City won the 2023 UEFA Champions League.",
-            },
-        },
-    },
-    "stream_completed": {
-        "summary": "Stream completed",
-        "value": {
-            "event": "end",
-            "data": {"message": "[DONE]"},
-        },
-    },
-    "stream_error": {
-        "summary": "Stream error",
-        "value": {
-            "event": "error",
-            "data": {"error": "Upstream request failed"},
-        },
-    },
-}
-
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+CHAT_STREAM_SCHEMA, CHAT_STREAM_DEFINITIONS = SseMessageAdapter.openapi_schema()
 
-def _custom_openapi() -> dict[str, object]:
+
+def custom_openapi() -> dict[str, object]:
     if app.openapi_schema:
         return app.openapi_schema
 
@@ -89,10 +52,7 @@ def _custom_openapi() -> dict[str, object]:
     return app.openapi_schema
 
 
-app.openapi = _custom_openapi  # type: ignore[assignment]
-
-logger = logging.getLogger(__name__)
-
+app.openapi = custom_openapi
 
 cors_origin = os.getenv("CORS_ALLOW_ORIGIN")
 if cors_origin:
@@ -119,7 +79,6 @@ async def root() -> dict[str, str]:
             "content": {
                 "text/event-stream": {
                     "schema": CHAT_STREAM_SCHEMA,
-                    "examples": CHAT_STREAM_EXAMPLES,
                 }
             },
         }
@@ -144,7 +103,6 @@ async def chat(
                 yield f"data: {payload}\n\n"
         except Exception as err:
             logger.exception("streaming /chat response failed: %s", err)
-            # TODO: design better message
             error_envelope = ChatErrorEnvelope(
                 event=SseEvent.ERROR,
                 data=ChatErrorPayload(error=str(err)),
