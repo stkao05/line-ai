@@ -35,15 +35,9 @@ from pydantic import BaseModel, ValidationError
 from tools import fetch_page, google_search
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
-model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
-quick_answer_model_client = OpenAIChatCompletionClient(
-    model="gpt-4o", api_key=openai_api_key
-)
-coding_model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
-
-# gemini_api_key = os.getenv("GEMINI_API_KEY")
-# gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-# model_client = OpenAIChatCompletionClient(model=gemini_model, api_key=gemini_api_key)
+general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
+quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
+coding_model = OpenAIChatCompletionClient(model="gpt-4.1", api_key=openai_api_key)
 
 
 @dataclass
@@ -382,7 +376,7 @@ def create_team():
 
     router_agent = AssistantAgent(
         name="router_agent",
-        model_client=model_client,
+        model_client=quick_model,
         output_content_type=RoutePlan,
         description="Select the optimal workflow path",
         system_message=router_system_message,
@@ -401,7 +395,7 @@ def create_team():
 
     research_planner_agent = AssistantAgent(
         name="research_planner_agent",
-        model_client=model_client,
+        model_client=general_model,
         output_content_type=ResearchPlan,
         description="Design the deep-dive search and retrieval plan",
         system_message=research_planner_system_message,
@@ -427,7 +421,7 @@ def create_team():
 
     search_rank_agent = AssistantAgent(
         name="search_rank_agent",
-        model_client=model_client,
+        model_client=general_model,
         output_content_type=RankedSearchResults,
         description="Select the most relevant websites from the candidate list",
         system_message=ranking_system_message,
@@ -478,7 +472,7 @@ def create_team():
 
     quick_answer_agent = AssistantAgent(
         name="quick_answer_agent",
-        model_client=quick_answer_model_client,
+        model_client=quick_model,
         description="Deliver concise answers without external research",
         system_message=quick_system_message,
         model_client_stream=True,
@@ -486,7 +480,7 @@ def create_team():
 
     coding_agent = AssistantAgent(
         name="coding_agent",
-        model_client=coding_model_client,
+        model_client=coding_model,
         description="Provide hands-on programming assistance",
         system_message=coding_system_message,
         model_client_stream=True,
@@ -494,7 +488,7 @@ def create_team():
 
     report_agent = AssistantAgent(
         name="report_agent",
-        model_client=model_client,
+        model_client=general_model,
         description="Generate a summary report based on the research findings",
         system_message=report_system_message,
         model_client_stream=True,
