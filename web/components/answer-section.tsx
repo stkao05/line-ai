@@ -12,11 +12,7 @@ type AnswerSectionProps = {
   referencesLabel?: string;
 };
 
-export function AnswerSection({
-  content,
-  references,
-  referencesLabel = "References",
-}: AnswerSectionProps) {
+export function AnswerSection({ content, references }: AnswerSectionProps) {
   const trimmedContent = content.trim();
   const hasContent = trimmedContent.length > 0;
   const hasReferences = references.length > 0;
@@ -27,11 +23,11 @@ export function AnswerSection({
         {hasContent ? <MarkdownRenderer content={trimmedContent} /> : null}
       </div>
 
-      <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
-          {referencesLabel}
-        </p>
-        {hasReferences ? (
+      {hasReferences ? (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+            Reference
+          </p>
           <div className="grid gap-3 md:grid-cols-3">
             {references.map((reference) => (
               <a
@@ -41,15 +37,17 @@ export function AnswerSection({
                 target="_blank"
                 rel="noreferrer"
               >
-                <p className="text-sm font-semibold break-words">{reference.title}</p>
+                <p className="text-sm font-semibold break-words">
+                  {reference.title}
+                </p>
                 <p className="mt-1 text-xs text-zinc-400 break-words">
                   {reference.description}
                 </p>
               </a>
             ))}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
