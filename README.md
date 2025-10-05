@@ -45,8 +45,7 @@ The system consists of a FastAPI back end that orchestrates an Autogen multi‑a
 Backend
 
 - Async‑first (`asyncio`) for high concurrency.
-- Multi‑turn conversations: previous turns are kept in memory per `conversation_id`.
-- Stateless clients pass the `conversation_id` from the first turn to preserve context.
+- Multi‑turn conversations: previous conversation context are kept in memory.
 - Workflow routing is implemented with Autogen GraphFlow; details below.
 
 Frontend
@@ -71,17 +70,16 @@ flowchart LR
     QA --> A[(Final Answer\nTERMINATE)]
 
     R -- deep_dive --> TD[today_date_agent]
-    TD --> RP[research_planner_agent\nResearchPlan]
-    RP --> GS[google_search_agent\nSearchCandidates]
-    GS --> SR[search_rank_agent\nRankedSearchResults]
-    SR --> PF[page_fetch_agent\nSearchResult]
+    TD --> RP[research_planner_agent]
+    RP --> GS[google_search_agent]
+    GS --> SR[search_rank_agent]
+    SR --> PF[page_fetch_agent]
     PF --> RE[report_agent]
     RE --> A
 
     R -- coding --> CD[coding_agent]
     CD --> A
 
-    class TD side;
     classDef side fill:#1f2937,stroke:#3f3f46,color:#e5e7eb;
 ```
 
@@ -99,9 +97,11 @@ Agent Overview
 
 ## AI Prompt
 
-I used AI coding tools (Cursor + OpenAI Codex) for this assignment. Below are example prompts that illustrate my typical workflow.
+I used AI coding tools (OpenAI Codex for Cursor) for this assignment. _No system-level prompt_ was used during the working of this project.
 
-1. Discuss, review, and iterate
+Below are example prompts that illustrate my typical workflow.
+
+_Discuss, review, and iterate_
 
 I start by asking for a high‑level outline and design. Once aligned on the direction, I ask the agent to implement changes in small, verifiable steps (e.g., data model, backend, frontend).
 
@@ -117,12 +117,12 @@ agent: ...
 user: Great, now let’s update the frontend to use the new message types.
 ```
 
-2. Handling knowledge gaps
+_Handling knowledge gaps_
 
 LLMs may have outdated knowledge of tools and frameworks. For example, the OpenAI Codex model has knowledge of Autogen 2.x, whereas the latest Autogen is 7.x. To bridge this gap, I sometimes:
 
 - Include an LLM‑friendly text export of the relevant docs in context.
-- Provide the library source code and let the LLM infer usage.
+- Point the code agent where the library source code is and let the LLM infer usage.
 
 ```
 I’d like to extend the current agent to add routing: a router agent inspects the user question and selects one of three branches:
@@ -130,6 +130,5 @@ I’d like to extend the current agent to add routing: a router agent inspects t
 - deep dive (web search)
 - coding task
 
-Your Autogen knowledge may be outdated—please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference to implement this.
+Your Autogen knowledge may be outdated—please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference to implement this or you may find the library source code here `/miniconda3/envs/lineai/lib/python3.10/site-packages/autogen_agentchat`
 ```
-
