@@ -6,6 +6,8 @@ import {
   FormEvent,
   KeyboardEvent,
   useCallback,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 import { Turn } from "../components/turn";
@@ -22,6 +24,7 @@ const SUGGESTED_QUESTIONS = [
 export function Chat() {
   const { turns, status, error, sendMessage } = useChat();
   const [input, setInput] = useState("");
+  const scrollTargetRef = useRef<HTMLDivElement | null>(null);
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(event.target.value);
@@ -53,6 +56,15 @@ export function Chat() {
   const shouldShowMockTurn = SHOW_MOCK_TURN && !hasTurns;
   const shouldShowWelcomeScreen = !hasTurns && !shouldShowMockTurn;
 
+  useEffect(() => {
+    const target = scrollTargetRef.current;
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, status]);
+
   const handleSuggestionSelect = useCallback(
     (suggestion: string) => {
       // Auto-submit when a suggestion is clicked
@@ -66,7 +78,7 @@ export function Chat() {
   );
 
   return (
-    <main className="max-w-[1000px] mx-auto pb-24">
+    <main className="max-w-[1000px] mx-auto">
       <div className="space-y-4">
         {hasTurns ? (
           turns.map((turn, index) => <Turn key={index} turn={turn} />)
@@ -78,6 +90,7 @@ export function Chat() {
             onSelect={handleSuggestionSelect}
           />
         ) : null}
+        <div ref={scrollTargetRef} aria-hidden className="pb-24 h-px w-full" />
       </div>
       <div className="fixed bottom-6 w-full max-w-[1000px]">
         {error ? (
