@@ -25,6 +25,7 @@ function isStreamMessage(value: unknown): value is StreamMessage {
   const { type } = value as { type?: unknown };
   return (
     type === "turn.start" ||
+    type === "turn.status" ||
     type === "search.start" ||
     type === "search.end" ||
     type === "rank.start" ||

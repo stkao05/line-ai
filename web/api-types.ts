@@ -4,347 +4,308 @@
  */
 
 export interface paths {
-  "/": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Root */
+        get: operations["root__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Root */
-    get: operations["root__get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/chat/event-type": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chat */
+        get: operations["chat_chat_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Chat Type */
-    get: operations["chat_type_chat_event_type_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/chat": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Chat */
-    get: operations["chat_chat_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /** HTTPValidationError */
-    HTTPValidationError: {
-      /** Detail */
-      detail?: components["schemas"]["ValidationError"][];
+    schemas: {
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
+        /** AnswerDeltaMessage */
+        AnswerDeltaMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "answer-delta";
+            /** Delta */
+            delta: string;
+        };
+        /** AnswerMessage */
+        AnswerMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "answer";
+            /** Answer */
+            answer: string;
+            /**
+             * Citations
+             * @default null
+             */
+            citations: components["schemas"]["Page"][] | null;
+        };
+        /**
+         * ChatDoneEnvelope
+         * @description Server-sent event dispatched when streaming is finished.
+         */
+        ChatDoneEnvelope: {
+            /**
+             * Event
+             * @constant
+             */
+            event: "end";
+            data: components["schemas"]["ChatDonePayload"];
+        };
+        /**
+         * ChatDonePayload
+         * @description Payload emitted when the stream has completed successfully.
+         */
+        ChatDonePayload: {
+            /**
+             * Message
+             * @constant
+             */
+            message: "[DONE]";
+        };
+        /**
+         * ChatErrorEnvelope
+         * @description Server-sent event dispatched when an unrecoverable error occurs.
+         */
+        ChatErrorEnvelope: {
+            /**
+             * Event
+             * @constant
+             */
+            event: "error";
+            data: components["schemas"]["ChatErrorPayload"];
+        };
+        /**
+         * ChatErrorPayload
+         * @description Error payload sent when the stream encounters an exception.
+         */
+        ChatErrorPayload: {
+            /** Error */
+            error: string;
+        };
+        /**
+         * ChatStreamEnvelope
+         * @description Primary chat event wrapping a streamed message payload.
+         */
+        ChatStreamEnvelope: {
+            /**
+             * Event
+             * @constant
+             */
+            event: "message";
+            /** Data */
+            data: components["schemas"]["TurnStartMessage"] | components["schemas"]["TurnStatusMessage"] | components["schemas"]["SearchStartMessage"] | components["schemas"]["SearchEndMessage"] | components["schemas"]["RankStartMessage"] | components["schemas"]["RankEndMessage"] | components["schemas"]["FetchStartMessage"] | components["schemas"]["FetchEndMessage"] | components["schemas"]["AnswerDeltaMessage"] | components["schemas"]["AnswerMessage"];
+        };
+        /** FetchEndMessage */
+        FetchEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "fetch.end";
+            /**
+             * Pages
+             * @default null
+             */
+            pages: components["schemas"]["Page"][] | null;
+        };
+        /** FetchStartMessage */
+        FetchStartMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "fetch.start";
+            /** Pages */
+            pages: components["schemas"]["Page"][];
+        };
+        /**
+         * Page
+         * @description Normalized representation of a fetched page.
+         */
+        Page: {
+            /** Url */
+            url: string;
+            /**
+             * Title
+             * @default null
+             */
+            title: string | null;
+            /**
+             * Snippet
+             * @default null
+             */
+            snippet: string | null;
+            /**
+             * Favicon
+             * @default null
+             */
+            favicon: string | null;
+        };
+        /** RankEndMessage */
+        RankEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "rank.end";
+            /** Pages */
+            pages: components["schemas"]["Page"][];
+        };
+        /** RankStartMessage */
+        RankStartMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "rank.start";
+        };
+        /** SearchEndMessage */
+        SearchEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "search.end";
+            /** Query */
+            query: string;
+            /** Results */
+            results: number;
+        };
+        /** SearchStartMessage */
+        SearchStartMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "search.start";
+            /** Query */
+            query: string;
+        };
+        /** TurnStartMessage */
+        TurnStartMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "turn.start";
+            /** Conversation Id */
+            conversation_id: string;
+        };
+        /** TurnStatusMessage */
+        TurnStatusMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "turn.status";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+        };
     };
-    /** ValidationError */
-    ValidationError: {
-      /** Location */
-      loc: (string | number)[];
-      /** Message */
-      msg: string;
-      /** Error Type */
-      type: string;
-    };
-    /** AnswerDeltaMessage */
-    AnswerDeltaMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "answer-delta";
-      /** Delta */
-      delta: string;
-    };
-    /** AnswerMessage */
-    AnswerMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "answer";
-      /** Answer */
-      answer: string;
-      /**
-       * Citations
-       * @default null
-       */
-      citations: components["schemas"]["Page"][] | null;
-    };
-    /**
-     * ChatDoneEnvelope
-     * @description Server-sent event dispatched when streaming is finished.
-     */
-    ChatDoneEnvelope: {
-      /**
-       * Event
-       * @constant
-       */
-      event: "end";
-      data: components["schemas"]["ChatDonePayload"];
-    };
-    /**
-     * ChatDonePayload
-     * @description Payload emitted when the stream has completed successfully.
-     */
-    ChatDonePayload: {
-      /**
-       * Message
-       * @constant
-       */
-      message: "[DONE]";
-    };
-    /**
-     * ChatErrorEnvelope
-     * @description Server-sent event dispatched when an unrecoverable error occurs.
-     */
-    ChatErrorEnvelope: {
-      /**
-       * Event
-       * @constant
-       */
-      event: "error";
-      data: components["schemas"]["ChatErrorPayload"];
-    };
-    /**
-     * ChatErrorPayload
-     * @description Error payload sent when the stream encounters an exception.
-     */
-    ChatErrorPayload: {
-      /** Error */
-      error: string;
-    };
-    /**
-     * ChatStreamEnvelope
-     * @description Primary chat event wrapping a streamed message payload.
-     */
-    ChatStreamEnvelope: {
-      /**
-       * Event
-       * @constant
-       */
-      event: "message";
-      /** Data */
-      data:
-        | components["schemas"]["TurnStartMessage"]
-        | components["schemas"]["SearchStartMessage"]
-        | components["schemas"]["SearchEndMessage"]
-        | components["schemas"]["RankStartMessage"]
-        | components["schemas"]["RankEndMessage"]
-        | components["schemas"]["FetchStartMessage"]
-        | components["schemas"]["FetchEndMessage"]
-        | components["schemas"]["AnswerDeltaMessage"]
-        | components["schemas"]["AnswerMessage"];
-    };
-    /** FetchEndMessage */
-    FetchEndMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "fetch.end";
-      /**
-       * Pages
-       * @default null
-       */
-      pages: components["schemas"]["Page"][] | null;
-    };
-    /** FetchStartMessage */
-    FetchStartMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "fetch.start";
-      /** Pages */
-      pages: components["schemas"]["Page"][];
-    };
-    /**
-     * Page
-     * @description Normalized representation of a fetched page.
-     */
-    Page: {
-      /** Url */
-      url: string;
-      /**
-       * Title
-       * @default null
-       */
-      title: string | null;
-      /**
-       * Snippet
-       * @default null
-       */
-      snippet: string | null;
-      /**
-       * Favicon
-       * @default null
-       */
-      favicon: string | null;
-    };
-    /** RankEndMessage */
-    RankEndMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "rank.end";
-      /** Pages */
-      pages: components["schemas"]["Page"][];
-    };
-    /** RankStartMessage */
-    RankStartMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "rank.start";
-    };
-    /** SearchEndMessage */
-    SearchEndMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "search.end";
-      /** Query */
-      query: string;
-      /** Results */
-      results: number;
-    };
-    /** SearchStartMessage */
-    SearchStartMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "search.start";
-      /** Query */
-      query: string;
-    };
-    /** TurnStartMessage */
-    TurnStartMessage: {
-      /**
-       * Type
-       * @constant
-       */
-      type: "turn.start";
-      /** Conversation Id */
-      conversation_id: string;
-    };
-  };
-  responses: never;
-  parameters: never;
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  root__get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    root__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    chat_chat_get: {
+        parameters: {
+            query: {
+                user_message: string;
+                conversation_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          "application/json": {
-            [key: string]: string;
-          };
+        requestBody?: never;
+        responses: {
+            /** @description Server-Sent Events stream containing chat progress updates and final answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ChatStreamEnvelope"] | components["schemas"]["ChatErrorEnvelope"] | components["schemas"]["ChatDoneEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
-      };
     };
-  };
-  chat_type_chat_event_type_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            [key: string]: string[];
-          };
-        };
-      };
-    };
-  };
-  chat_chat_get: {
-    parameters: {
-      query: {
-        user_message: string;
-        conversation_id?: string | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Server-Sent Events stream containing chat progress updates and final answer. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/event-stream":
-            | components["schemas"]["ChatStreamEnvelope"]
-            | components["schemas"]["ChatErrorEnvelope"]
-            | components["schemas"]["ChatDoneEnvelope"];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
 }

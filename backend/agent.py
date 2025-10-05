@@ -30,6 +30,7 @@ from message import (
     SearchStartMessage,
     StreamMessage,
     TurnStartMessage,
+    TurnStatusMessage,
 )
 from pydantic import BaseModel, ValidationError
 from tools import fetch_page, google_search
@@ -630,12 +631,27 @@ async def ask(
         async for event in state.team.run_stream(task=user_message):
             if isinstance(event, RoutePlanMessage):
                 route = event.content.route
+                status_title: str
+                status_description: str
                 if route == "quick_answer":
                     final_agent_sources = {"quick_answer_agent"}
+                    status_title = "Quick answer selected"
+                    status_description = "Responding directly using existing knowledge without external research."
                 elif route == "coding":
                     final_agent_sources = {"coding_agent"}
+                    status_title = "Coding support engaged"
+                    status_description = (
+                        "Focusing on code-specific guidance and implementation details."
+                    )
                 else:
                     final_agent_sources = {"report_agent"}
+                    status_title = "Start deep dive research"
+                    status_description = "Gathering sources, ranking findings, and preparing a comprehensive report."
+                yield TurnStatusMessage(
+                    type="turn.status",
+                    title=status_title,
+                    description=status_description,
+                )
                 continue
 
             if isinstance(event, ResearchPlanMessage):

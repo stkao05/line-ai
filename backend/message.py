@@ -36,6 +36,12 @@ class TurnStartMessage(BaseStreamMessage):
     conversation_id: str
 
 
+class TurnStatusMessage(BaseStreamMessage):
+    type: Literal["turn.status"]
+    title: str
+    description: str
+
+
 class SearchEndMessage(BaseStreamMessage):
     type: Literal["search.end"]
     query: str
@@ -74,6 +80,7 @@ class AnswerMessage(BaseStreamMessage):
 
 StreamMessage: TypeAlias = (
     TurnStartMessage
+    | TurnStatusMessage
     | SearchStartMessage
     | SearchEndMessage
     | RankStartMessage
@@ -172,6 +179,7 @@ __all__ = [
     "ChatErrorPayload",
     "ChatStreamEnvelope",
     "ChatSseEvent",
+    "TurnStatusMessage",
     "TurnStartMessage",
     "FetchEndMessage",
     "FetchStartMessage",

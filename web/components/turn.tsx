@@ -18,6 +18,7 @@ export type { TurnReference } from "./answer-section";
 const AGENT_WORKFLOW_TITLE = "Agent Workflow";
 
 type TurnStartMessage = Extract<StreamMessage, { type: "turn.start" }>;
+type TurnStatusMessage = Extract<StreamMessage, { type: "turn.status" }>;
 type SearchStartMessage = Extract<StreamMessage, { type: "search.start" }>;
 type SearchEndMessage = Extract<StreamMessage, { type: "search.end" }>;
 type RankStartMessage = Extract<StreamMessage, { type: "rank.start" }>;
@@ -151,6 +152,9 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   const turnStarts = messages.filter(
     (message): message is TurnStartMessage => message.type === "turn.start"
   );
+  const turnStatusMessages = messages.filter(
+    (message): message is TurnStatusMessage => message.type === "turn.status"
+  );
   const searchStarts = messages.filter(
     (message): message is SearchStartMessage => message.type === "search.start"
   );
@@ -226,22 +230,31 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
       ? "Composing response…"
       : "Waiting for synthesis step.";
 
+  const latestTurnStatus = getLast(turnStatusMessages);
   const hasTurnStart = turnStarts.length > 0;
-  const hasAnyWorkflowMessageBeyondTurnStart = messages.some(
-    (message) => message.type !== "turn.start"
+  const hasActivityBeyondPlanning = messages.some(
+    (message) =>
+      message.type !== "turn.start" && message.type !== "turn.status"
   );
   const thinkingStatus: AgentWorkflowStatus = hasTurnStart
-    ? hasAnyWorkflowMessageBeyondTurnStart
+    ? hasActivityBeyondPlanning
       ? "complete"
       : "active"
-    : "pending";
-  const thinkingDetail = hasTurnStart
-    ? "Assessing the question before taking action."
-    : "Waiting for the agent to begin.";
+    : latestTurnStatus
+      ? "active"
+      : "pending";
+  const thinkingTitle = latestTurnStatus
+    ? latestTurnStatus.title
+    : "Thinking through the request";
+  const thinkingDetail: ReactNode = latestTurnStatus
+    ? latestTurnStatus.description
+    : hasTurnStart
+      ? "Assessing the question before taking action."
+      : "Waiting for the agent to begin.";
 
   return [
     {
-      title: "Thinking through the request",
+      title: thinkingTitle,
       status: thinkingStatus,
       detail: thinkingDetail,
     },
