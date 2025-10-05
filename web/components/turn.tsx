@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import type { ReactNode } from "react";
 import type { PageSummary, StreamMessage, TurnData } from "../types";
 import {
@@ -15,14 +16,22 @@ export type {
 } from "./agent-workflow-card";
 export type { TurnReference } from "./answer-section";
 
-const AGENT_WORKFLOW_TITLE = "Agent Workflow";
 type StepStartMessage = Extract<StreamMessage, { type: "step.start" }>;
 type StepStatusMessage = Extract<StreamMessage, { type: "step.status" }>;
 type StepEndMessage = Extract<StreamMessage, { type: "step.end" }>;
-type StepFetchStartMessage = Extract<StreamMessage, { type: "step.fetch.start" }>;
+type StepFetchStartMessage = Extract<
+  StreamMessage,
+  { type: "step.fetch.start" }
+>;
 type StepFetchEndMessage = Extract<StreamMessage, { type: "step.fetch.end" }>;
-type StepAnswerStartMessage = Extract<StreamMessage, { type: "step.answer.start" }>;
-type StepAnswerDeltaMessage = Extract<StreamMessage, { type: "step.answer.delta" }>;
+type StepAnswerStartMessage = Extract<
+  StreamMessage,
+  { type: "step.answer.start" }
+>;
+type StepAnswerDeltaMessage = Extract<
+  StreamMessage,
+  { type: "step.answer.delta" }
+>;
 type StepAnswerEndMessage = Extract<StreamMessage, { type: "step.answer.end" }>;
 type AnswerMessage = Extract<StreamMessage, { type: "answer" }>;
 
@@ -72,16 +81,15 @@ function renderPageList(
         const title = page.title?.trim() || page.url;
         const snippet = page.snippet?.trim();
         const favicon = page.favicon?.trim();
-        const displayUrl = truncate(page.url, 120);
 
         if (variant === "fetch") {
           return (
-            <li key={page.url} className="flex items-start gap-3">
+            <li key={page.url} className="flex items-center gap-2">
               {favicon ? (
                 <img
                   src={favicon}
                   alt=""
-                  className="h-6 w-6 shrink-0 rounded-full border border-zinc-800"
+                  className="h-4 w-4 shrink-0 rounded-full border border-zinc-800"
                 />
               ) : (
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-[10px] text-zinc-500">
@@ -89,16 +97,13 @@ function renderPageList(
                 </span>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-zinc-400">
-                  {title}
-                </span>
                 <a
                   href={page.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs text-zinc-500 hover:text-emerald-200"
+                  className="text-sm font-medium text-zinc-400 hover:text-emerald-200"
                 >
-                  {displayUrl}
+                  {title}
                 </a>
               </div>
             </li>
@@ -430,8 +435,8 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
 
   return (
     <div className="w-auto space-y-8 py-10 text-zinc-100">
-      <section className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/60 shadow-xl shadow-black/20">
-        <header className="space-y-2 border-b border-zinc-800 bg-zinc-950/80 px-6 py-5">
+      <section className="overflow-hidden rounded-3xl border border-zinc-800 shadow-xl shadow-black/20">
+        <header className="space-y-2 border-b border-zinc-800  px-6 py-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Question
           </p>
@@ -441,7 +446,7 @@ export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
         </header>
 
         <div className="space-y-6 px-6 py-7">
-          <AgentWorkflowCard title={AGENT_WORKFLOW_TITLE} steps={steps} />
+          <AgentWorkflowCard steps={steps} />
           <AnswerSection content={answerContent} references={references} />
         </div>
       </section>

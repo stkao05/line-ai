@@ -13,7 +13,7 @@ import { ChatForm } from "../components/chat-form";
 
 const SHOW_MOCK_TURN = false;
 const SUGGESTED_QUESTIONS = [
-  "What's new with LINE this month?",
+  "What's new with LINE this year?",
   "Why is sky blue?",
   "Could you write topological sort in Python?",
   "How can I evaluate model quality when prototyping with AI agent?",

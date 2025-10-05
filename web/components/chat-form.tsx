@@ -20,13 +20,13 @@ export function ChatForm({
 }: ChatFormProps) {
   return (
     <form
-      className="flex max-w-[1000px] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 shadow-xl shadow-black/20"
+      className="flex max-w-[1000px] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl shadow-black/20"
       onSubmit={onSubmit}
     >
       <textarea
         className="w-full resize-none bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
         name="message"
-        placeholder="Message"
+        placeholder="Ask anything"
         rows={1}
         value={value}
         onChange={onChange}
