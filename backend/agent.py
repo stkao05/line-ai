@@ -15,28 +15,6 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
 from tools import fetch_page, google_search
 
-__all__ = [
-    "SearchCandidateItem",
-    "SearchCandidates",
-    "SearchCandidatesMessage",
-    "RankedSearchResultItem",
-    "RankedSearchResults",
-    "RankedSearchResultsMessage",
-    "SearchResultItem",
-    "SearchResult",
-    "SearchResultMessage",
-    "RoutePlan",
-    "RoutePlanMessage",
-    "ResearchPlan",
-    "ResearchPlanMessage",
-    "TodayDate",
-    "TodayDateMessage",
-    "TodayDateAgent",
-    "GoogleSearchExecutorAgent",
-    "PageFetchAgent",
-    "create_team",
-]
-
 openai_api_key = os.getenv("OPENAI_API_KEY")
 general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
@@ -490,6 +468,7 @@ def create_team():
 
     builder.set_entry_point(router_agent)
 
+    # deep dive branch
     builder.add_edge(
         router_agent,
         today_date_agent,
@@ -497,21 +476,23 @@ def create_team():
         and msg.content.route == "deep_dive",
     )
     builder.add_edge(
-        router_agent,
+        today_date_agent,
         research_planner_agent,
-        condition=lambda msg: isinstance(msg, RoutePlanMessage)
-        and msg.content.route == "deep_dive",
     )
     builder.add_edge(research_planner_agent, google_search_agent)
     builder.add_edge(google_search_agent, search_rank_agent)
     builder.add_edge(search_rank_agent, page_fetch_agent)
     builder.add_edge(page_fetch_agent, report_agent)
+
+    # quick answer branch
     builder.add_edge(
         router_agent,
         quick_answer_agent,
         condition=lambda msg: isinstance(msg, RoutePlanMessage)
         and msg.content.route == "quick_answer",
     )
+
+    # coding branch
     builder.add_edge(
         router_agent,
         coding_agent,
