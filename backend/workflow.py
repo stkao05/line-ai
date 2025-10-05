@@ -1,8 +1,8 @@
-# %%
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator, Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -43,10 +43,27 @@ from pydantic import ValidationError
 class ConversationState:
     team: GraphFlow
     lock: asyncio.Lock
+    last_used: datetime
 
 
 # Keeps in-memory state per conversation. Safe under single-process lifetime.
 _conversation_states: Dict[str, ConversationState] = {}
+
+
+CONVERSATION_TTL = timedelta(days=1)
+
+
+def _purge_expired_conversations(now: datetime) -> None:
+    expiration_threshold = now - CONVERSATION_TTL
+    expired_conv_ids: List[str] = []
+    for conv_id, state in list(_conversation_states.items()):
+        if state.lock.locked():
+            continue
+        if state.last_used < expiration_threshold:
+            expired_conv_ids.append(conv_id)
+
+    for conv_id in expired_conv_ids:
+        _conversation_states.pop(conv_id, None)
 
 
 class ConversationSession:
@@ -63,11 +80,17 @@ class ConversationSession:
         self.state: Optional[ConversationState] = None
 
     async def __aenter__(self) -> "ConversationSession":
+        now = datetime.now(timezone.utc)
+        _purge_expired_conversations(now)
         conv_id = self._requested_id or uuid4().hex
         state = _conversation_states.get(conv_id)
         if state is None:
-            state = ConversationState(team=create_team(), lock=asyncio.Lock())
+            state = ConversationState(
+                team=create_team(), lock=asyncio.Lock(), last_used=now
+            )
             _conversation_states[conv_id] = state
+        else:
+            state.last_used = now
 
         if state.lock.locked():
             raise RuntimeError(
@@ -75,12 +98,14 @@ class ConversationSession:
             )
 
         await state.lock.acquire()
+        state.last_used = now
         self.conversation_id = conv_id
         self.state = state
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         if self.state is not None:
+            self.state.last_used = datetime.now(timezone.utc)
             self.state.lock.release()
 
 
@@ -538,13 +563,11 @@ async def ask(
                 break
 
 
-# %%
 if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
         question = "what is latest Line company news"
-        # question = "Could you write topological sort in Python"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):
