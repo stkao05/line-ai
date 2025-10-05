@@ -37,8 +37,9 @@ from tools import fetch_page, google_search
 openai_api_key = os.getenv("OPENAI_API_KEY")
 model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 quick_answer_model_client = OpenAIChatCompletionClient(
-    model="gpt-4.1", api_key=openai_api_key
+    model="gpt-4o", api_key=openai_api_key
 )
+coding_model_client = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 
 # gemini_api_key = os.getenv("GEMINI_API_KEY")
 # gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
@@ -108,7 +109,7 @@ SearchResultMessage = StructuredMessage[SearchResult]
 
 
 class RoutePlan(BaseModel):
-    route: Literal["quick_answer", "deep_dive"]
+    route: Literal["quick_answer", "deep_dive", "coding"]
 
 
 RoutePlanMessage = StructuredMessage[RoutePlan]
@@ -370,11 +371,12 @@ def create_team():
     You are the **routing planner** for a retrieval assistant. Today's date is {human_date} (UTC {iso_date}).
 
     Responsibilities:
-    - Inspect the latest user request and decide whether a QUICK_ANSWER or DEEP_DIVE route is required.
+    - Inspect the latest user request and decide whether a QUICK_ANSWER, DEEP_DIVE, or CODING route is required.
     - Emit a `RoutePlan` structured object with the following fields:
-      - `route`: `"quick_answer"` for lightweight responses or `"deep_dive"` when external research is required.
+      - `route`: `"quick_answer"` for lightweight responses, `"deep_dive"` when external research is required, or `"coding"` when hands-on programming help is needed.
     - Prefer `"quick_answer"` when the request is straightforward, answerable from general knowledge, or when search would not add value.
     - Prefer `"deep_dive"` for questions needing up-to-date facts, citations, or multiple corroborating sources.
+    - Prefer `"coding"` for programming tasks such as writing, debugging, or refactoring code where the assistant should produce or analyze code.
     - Keep the plan concise and avoid free-form commentary outside of the structured object.
     """
 
@@ -443,7 +445,7 @@ def create_team():
     )
 
     termination = TextMentionTermination(
-        "TERMINATE", sources=["report_agent", "quick_answer_agent"]
+        "TERMINATE", sources=["report_agent", "quick_answer_agent", "coding_agent"]
     )
 
     report_system_message = """
@@ -465,11 +467,28 @@ def create_team():
     - When you finish, append the token `TERMINATE` on a new line to signal completion.
     """
 
+    coding_system_message = """
+    You are a **coding specialist** tasked with producing high-quality software solutions.
+
+    - Read the conversation carefully and provide accurate, efficient code to satisfy the user's goal.
+    - Offer brief explanations for non-trivial decisions and point out potential pitfalls or follow-up steps when appropriate.
+    - Use Markdown code fences with language hints for all significant code snippets.
+    - When you finish, append the token `TERMINATE` on a new line to signal completion.
+    """
+
     quick_answer_agent = AssistantAgent(
         name="quick_answer_agent",
         model_client=quick_answer_model_client,
         description="Deliver concise answers without external research",
         system_message=quick_system_message,
+        model_client_stream=True,
+    )
+
+    coding_agent = AssistantAgent(
+        name="coding_agent",
+        model_client=coding_model_client,
+        description="Provide hands-on programming assistance",
+        system_message=coding_system_message,
         model_client_stream=True,
     )
 
@@ -489,6 +508,7 @@ def create_team():
     builder.add_node(page_fetch_agent)
     builder.add_node(today_date_agent)
     builder.add_node(quick_answer_agent)
+    builder.add_node(coding_agent)
     builder.add_node(report_agent)
 
     builder.set_entry_point(router_agent)
@@ -514,6 +534,12 @@ def create_team():
         quick_answer_agent,
         condition=lambda msg: isinstance(msg, RoutePlanMessage)
         and msg.content.route == "quick_answer",
+    )
+    builder.add_edge(
+        router_agent,
+        coding_agent,
+        condition=lambda msg: isinstance(msg, RoutePlanMessage)
+        and msg.content.route == "coding",
     )
 
     graph = builder.build()
@@ -567,7 +593,11 @@ async def ask(
         fallback_segments: List[str] = []
         latest_citation_pages: List[Page] = []
         active_research_plan: Optional[ResearchPlan] = None
-        final_agent_sources: Set[str] = {"report_agent", "quick_answer_agent"}
+        final_agent_sources: Set[str] = {
+            "report_agent",
+            "quick_answer_agent",
+            "coding_agent",
+        }
 
         def build_page(
             url: str,
@@ -605,8 +635,11 @@ async def ask(
 
         async for event in state.team.run_stream(task=user_message):
             if isinstance(event, RoutePlanMessage):
-                if event.content.route == "quick_answer":
+                route = event.content.route
+                if route == "quick_answer":
                     final_agent_sources = {"quick_answer_agent"}
+                elif route == "coding":
+                    final_agent_sources = {"coding_agent"}
                 else:
                     final_agent_sources = {"report_agent"}
                 continue
@@ -776,7 +809,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "What is latest Line company news"
+        question = "Could you write topological sort in Python"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):
@@ -784,10 +817,10 @@ if __name__ == "__main__":
             if isinstance(message, TurnStartMessage):
                 conversation_id = message.conversation_id
 
-        if conversation_id:
-            follow_up = "Who did they face in the final?"
-            print(f"\nRunning follow-up ask() for: {follow_up}")
-            async for message in ask(follow_up, conversation_id=conversation_id):
-                print(message.model_dump())
+        # if conversation_id:
+        #     follow_up = "Who did they face in the final?"
+        #     print(f"\nRunning follow-up ask() for: {follow_up}")
+        #     async for message in ask(follow_up, conversation_id=conversation_id):
+        #         print(message.model_dump())
 
     asyncio.run(_demo())

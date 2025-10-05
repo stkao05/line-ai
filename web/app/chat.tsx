@@ -15,7 +15,7 @@ const SHOW_MOCK_TURN = false;
 const SUGGESTED_QUESTIONS = [
   "What's new with LINE this month?",
   "Why is sky blue?",
-  "Summarize recent breakthroughs in agentic AI research.",
+  "Could you write topological sort in Python?",
   "How can I evaluate model quality when prototyping with AI agent?",
 ];
 
