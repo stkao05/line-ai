@@ -125,7 +125,7 @@ export interface components {
              */
             event: "message";
             /** Data */
-            data: components["schemas"]["TurnStartMessage"] | components["schemas"]["StepStartMessage"] | components["schemas"]["StepEndMessage"] | components["schemas"]["StepFetchStartMessage"] | components["schemas"]["StepFetchEndMessage"] | components["schemas"]["StepAnswerStartMessage"] | components["schemas"]["StepAnswerDeltaMessage"] | components["schemas"]["StepAnswerEndMessage"] | components["schemas"]["AnswerMessage"];
+            data: components["schemas"]["TurnStartMessage"] | components["schemas"]["StepStartMessage"] | components["schemas"]["StepStatusMessage"] | components["schemas"]["StepEndMessage"] | components["schemas"]["StepFetchStartMessage"] | components["schemas"]["StepFetchEndMessage"] | components["schemas"]["StepAnswerStartMessage"] | components["schemas"]["StepAnswerDeltaMessage"] | components["schemas"]["StepAnswerEndMessage"] | components["schemas"]["AnswerMessage"];
         };
         /**
          * Page
@@ -233,6 +233,18 @@ export interface components {
              * @constant
              */
             type: "step.start";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+        };
+        /** StepStatusMessage */
+        StepStatusMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "step.status";
             /** Title */
             title: string;
             /** Description */

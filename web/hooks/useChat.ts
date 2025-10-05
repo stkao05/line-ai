@@ -26,6 +26,7 @@ function isStreamMessage(value: unknown): value is StreamMessage {
   return (
     type === "turn.start" ||
     type === "step.start" ||
+    type === "step.status" ||
     type === "step.end" ||
     type === "step.fetch.start" ||
     type === "step.fetch.end" ||

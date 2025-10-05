@@ -28,6 +28,7 @@ from message import (
     StepFetchEndMessage,
     StepFetchStartMessage,
     StepStartMessage,
+    StepStatusMessage,
     StreamMessage,
     TurnStartMessage,
 )
@@ -581,6 +582,8 @@ async def ask(
     try:
         search_started: Set[str] = set()
         search_completed: Set[str] = set()
+        search_status_announced: Set[str] = set()
+        search_step_open = False
         rank_step_started = False
         rank_step_completed = False
         fetch_announced: Set[str] = set()
@@ -630,6 +633,7 @@ async def ask(
 
         planning_title = "Planning the appropriate route"
         search_step_title = "Running web search"
+        coding_step_title = "Coding agent thinking"
         rank_step_title = "Ranking candidate sources"
         fetch_step_title = "Fetching supporting details"
         answer_step_title = "Answering the question"
@@ -643,11 +647,14 @@ async def ask(
         answer_step_started = False
         answer_step_completed = False
         answer_step_description: Optional[str] = None
+        coding_step_open = False
 
         async for event in state.team.run_stream(task=user_message):
             if isinstance(event, RoutePlanMessage):
                 route = event.content.route
                 end_description: str
+                start_search_after_plan = False
+                start_coding_after_plan = False
                 if route == "quick_answer":
                     final_agent_sources = {"quick_answer_agent"}
                     end_description = "Quick answer selected – responding directly using existing knowledge."
@@ -662,12 +669,14 @@ async def ask(
                     answer_step_description = (
                         "Producing code-focused explanations and solutions."
                     )
+                    start_coding_after_plan = True
                 else:
                     final_agent_sources = {"report_agent"}
                     end_description = "Deep dive research selected – gathering sources for a comprehensive response."
                     answer_step_description = (
                         "Synthesizing findings from external research."
                     )
+                    start_search_after_plan = True
 
                 if planning_step_open:
                     yield StepEndMessage(
@@ -676,6 +685,22 @@ async def ask(
                         description=end_description,
                     )
                     planning_step_open = False
+
+                if start_search_after_plan and not search_step_open:
+                    search_step_open = True
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=search_step_title,
+                        description="Preparing deep dive web search queries.",
+                    )
+
+                if start_coding_after_plan and not coding_step_open:
+                    coding_step_open = True
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=coding_step_title,
+                        description="Coding agent is thinking through the implementation details.",
+                    )
                 continue
 
             if isinstance(event, ResearchPlanMessage):
@@ -684,35 +709,70 @@ async def ask(
 
             if isinstance(event, SearchQueryMessage):
                 query = event.content.query.strip()
-                if query and query not in search_started:
-                    search_started.add(query)
-                    yield StepStartMessage(
-                        type="step.start",
+                if not query:
+                    continue
+
+                normalized_query = query
+
+                if normalized_query not in search_started:
+                    search_started.add(normalized_query)
+                    if not search_step_open:
+                        search_step_open = True
+                        yield StepStartMessage(
+                            type="step.start",
+                            title=search_step_title,
+                            description=f'Searching for "{normalized_query}".',
+                        )
+
+                if normalized_query not in search_status_announced:
+                    yield StepStatusMessage(
+                        type="step.status",
                         title=search_step_title,
-                        description=f'Searching for "{query}".',
+                        description=f'Searching with "{normalized_query}".',
                     )
+                    search_status_announced.add(normalized_query)
                 continue
 
             if isinstance(event, SearchCandidatesMessage):
                 query = event.content.query.strip()
+                candidate_count = len(event.content.candidates)
+                normalized_query = query
 
-                if query and query not in search_started:
-                    search_started.add(query)
-                    yield StepStartMessage(
-                        type="step.start",
-                        title=search_step_title,
-                        description=f'Searching for "{query}".',
-                    )
+                if normalized_query:
+                    if normalized_query not in search_started:
+                        search_started.add(normalized_query)
+                        if not search_step_open:
+                            search_step_open = True
+                            yield StepStartMessage(
+                                type="step.start",
+                                title=search_step_title,
+                                description=f'Searching for "{normalized_query}".',
+                            )
 
-                if query and query not in search_completed:
-                    search_completed.add(query)
-                    yield StepEndMessage(
-                        type="step.end",
-                        title=search_step_title,
-                        description=(
-                            f'Found {len(event.content.candidates)} candidates for "{query}".'
-                        ),
-                    )
+                    if normalized_query not in search_status_announced:
+                        yield StepStatusMessage(
+                            type="step.status",
+                            title=search_step_title,
+                            description=f'Searching with "{normalized_query}".',
+                        )
+                        search_status_announced.add(normalized_query)
+
+                    if normalized_query not in search_completed:
+                        search_completed.add(normalized_query)
+                        yield StepEndMessage(
+                            type="step.end",
+                            title=search_step_title,
+                            description=f'Found {candidate_count} candidates for "{normalized_query}".',
+                        )
+                        search_step_open = False
+                else:
+                    if not search_completed:
+                        yield StepEndMessage(
+                            type="step.end",
+                            title=search_step_title,
+                            description=f"Found {candidate_count} candidates without a specific query.",
+                        )
+                        search_step_open = False
 
                 if not rank_step_started:
                     rank_step_started = True
@@ -827,6 +887,13 @@ async def ask(
                 if event.source in final_agent_sources:
                     content = event.content or ""
                     if content:
+                        if coding_step_open:
+                            yield StepEndMessage(
+                                type="step.end",
+                                title=coding_step_title,
+                                description="Coding approach finalized – composing response.",
+                            )
+                            coding_step_open = False
                         if not answer_step_started:
                             yield StepAnswerStartMessage(
                                 type="step.answer.start",
@@ -852,6 +919,14 @@ async def ask(
                 continue
 
             if isinstance(event, TaskResult):
+                if coding_step_open:
+                    yield StepEndMessage(
+                        type="step.end",
+                        title=coding_step_title,
+                        description="Coding approach finalized – composing response.",
+                    )
+                    coding_step_open = False
+
                 final_answer = strip_termination_token("".join(answer_chunks))
 
                 if not final_answer:
@@ -900,7 +975,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "why is sky blue"
+        question = "what is latest Line company news"
         # question = "Could you write topological sort in Python"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None

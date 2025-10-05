@@ -37,6 +37,12 @@ class StepStartMessage(BaseStreamMessage):
     description: str
 
 
+class StepStatusMessage(BaseStreamMessage):
+    type: Literal["step.status"]
+    title: str
+    description: str
+
+
 class StepEndMessage(BaseStreamMessage):
     type: Literal["step.end"]
     title: str
@@ -81,6 +87,7 @@ class AnswerMessage(BaseStreamMessage):
 StreamMessage: TypeAlias = (
     TurnStartMessage
     | StepStartMessage
+    | StepStatusMessage
     | StepEndMessage
     | StepFetchStartMessage
     | StepFetchEndMessage
@@ -186,6 +193,7 @@ __all__ = [
     "StepFetchEndMessage",
     "StepFetchStartMessage",
     "StepStartMessage",
+    "StepStatusMessage",
     "SseEvent",
     "SseMessageAdapter",
     "StreamMessage",

@@ -49,6 +49,17 @@ export const EXAMPLE_TURN: TurnData = {
       description: "Searching for \"fastest way to learn rust for javascript developers\".",
     },
     {
+      type: "step.status",
+      title: "Running web search",
+      description: "Figuring out appropriate search queries...",
+    },
+    {
+      type: "step.status",
+      title: "Running web search",
+      description:
+        "Searching with \"fastest way to learn rust for javascript developers\".",
+    },
+    {
       type: "step.end",
       title: "Running web search",
       description: "Found 18 candidates for \"fastest way to learn rust for javascript developers\".",

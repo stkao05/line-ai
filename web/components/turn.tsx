@@ -17,6 +17,7 @@ export type { TurnReference } from "./answer-section";
 
 const AGENT_WORKFLOW_TITLE = "Agent Workflow";
 type StepStartMessage = Extract<StreamMessage, { type: "step.start" }>;
+type StepStatusMessage = Extract<StreamMessage, { type: "step.status" }>;
 type StepEndMessage = Extract<StreamMessage, { type: "step.end" }>;
 type StepFetchStartMessage = Extract<StreamMessage, { type: "step.fetch.start" }>;
 type StepFetchEndMessage = Extract<StreamMessage, { type: "step.fetch.end" }>;
@@ -30,6 +31,7 @@ const SEARCH_STEP_TITLE = "Running web search";
 const RANK_STEP_TITLE = "Ranking candidate sources";
 const FETCH_STEP_TITLE = "Fetching supporting details";
 const ANSWER_STEP_TITLE = "Answering the question";
+const CODING_STEP_TITLE = "Coding agent thinking";
 
 function getLast<T>(items: readonly T[]): T | undefined {
   if (items.length === 0) {
@@ -156,6 +158,33 @@ function uniqueDescriptions(
   return result;
 }
 
+function collectStepTimelineDescriptions(
+  messages: StreamMessage[],
+  title: string
+): string[] {
+  const timeline: string[] = [];
+
+  for (const message of messages) {
+    if (
+      (message.type === "step.start" ||
+        message.type === "step.status" ||
+        message.type === "step.end") &&
+      message.title === title
+    ) {
+      const rawDescription = (
+        message as StepStartMessage | StepStatusMessage | StepEndMessage
+      ).description;
+      const normalized = rawDescription?.trim();
+      if (!normalized || timeline.includes(normalized)) {
+        continue;
+      }
+      timeline.push(normalized);
+    }
+  }
+
+  return timeline;
+}
+
 function renderDescriptionItems(items: string[]): ReactNode {
   return (
     <ul className="space-y-1">
@@ -199,10 +228,12 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   const planningEnds = stepEnds.filter(
     (message) => message.title === PLANNING_STEP_TITLE
   );
+  const planningTimeline = collectStepTimelineDescriptions(
+    messages,
+    PLANNING_STEP_TITLE
+  );
   const planningDetail =
-    uniqueDescriptions(planningEnds.map((message) => message.description))[0] ??
-    uniqueDescriptions(planningStarts.map((message) => message.description))[0] ??
-    "Waiting for planning step.";
+    getLast(planningTimeline) ?? "Waiting for planning step.";
   const planningStatus = computeStepStatus(
     planningStarts.length > 0,
     planningEnds.length > 0 && planningEnds.length >= planningStarts.length
@@ -214,17 +245,13 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   const searchEnds = stepEnds.filter(
     (message) => message.title === SEARCH_STEP_TITLE
   );
-  const searchEndDescriptions = uniqueDescriptions(
-    searchEnds.map((message) => message.description)
+  const searchTimeline = collectStepTimelineDescriptions(
+    messages,
+    SEARCH_STEP_TITLE
   );
-  const searchStartDescriptions = uniqueDescriptions(
-    searchStarts.map((message) => message.description)
-  );
-  const searchDetail: ReactNode = searchEndDescriptions.length > 0
-    ? renderDescriptionItems(searchEndDescriptions)
-    : searchStartDescriptions.length > 0
-      ? renderDescriptionItems(searchStartDescriptions)
-      : "Waiting for search to begin.";
+  const searchDetail: ReactNode = searchTimeline.length > 0
+    ? renderDescriptionItems(searchTimeline)
+    : "Waiting for search to begin.";
   const searchStatus = computeStepStatus(
     searchStarts.length > 0,
     searchEnds.length > 0 && searchEnds.length >= searchStarts.length
@@ -236,13 +263,32 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
   const rankEnds = stepEnds.filter(
     (message) => message.title === RANK_STEP_TITLE
   );
+  const rankTimeline = collectStepTimelineDescriptions(
+    messages,
+    RANK_STEP_TITLE
+  );
   const rankDetail =
-    uniqueDescriptions(rankEnds.map((message) => message.description)).pop() ??
-    uniqueDescriptions(rankStarts.map((message) => message.description)).pop() ??
-    "Waiting for ranking step.";
+    getLast(rankTimeline) ?? "Waiting for ranking step.";
   const rankStatus = computeStepStatus(
     rankStarts.length > 0,
     rankEnds.length > 0 && rankEnds.length >= rankStarts.length
+  );
+
+  const codingStarts = stepStarts.filter(
+    (message) => message.title === CODING_STEP_TITLE
+  );
+  const codingEnds = stepEnds.filter(
+    (message) => message.title === CODING_STEP_TITLE
+  );
+  const codingTimeline = collectStepTimelineDescriptions(
+    messages,
+    CODING_STEP_TITLE
+  );
+  const codingDetail =
+    getLast(codingTimeline) ?? "Waiting for coding step.";
+  const codingStatus = computeStepStatus(
+    codingStarts.length > 0,
+    codingEnds.length > 0 && codingEnds.length >= codingStarts.length
   );
 
   const latestFetchEnd = getLast(fetchEnds);
@@ -286,6 +332,11 @@ function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
       title: RANK_STEP_TITLE,
       status: rankStatus,
       detail: rankDetail,
+    },
+    {
+      title: CODING_STEP_TITLE,
+      status: codingStatus,
+      detail: codingDetail,
     },
     {
       title: FETCH_STEP_TITLE,
