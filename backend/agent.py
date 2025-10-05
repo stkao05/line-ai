@@ -57,7 +57,11 @@ class ConversationSession:
     """Manage conversation lookup, creation, and locking."""
 
     def __init__(self, conversation_id: Optional[str]) -> None:
-        normalized = conversation_id.strip() if conversation_id and conversation_id.strip() else None
+        normalized = (
+            conversation_id.strip()
+            if conversation_id and conversation_id.strip()
+            else None
+        )
         self._requested_id = normalized
         self.conversation_id: Optional[str] = None
         self.state: Optional[ConversationState] = None
@@ -70,7 +74,9 @@ class ConversationSession:
             _conversation_states[conv_id] = state
 
         if state.lock.locked():
-            raise RuntimeError(f"conversation '{conv_id}' is already processing another request")
+            raise RuntimeError(
+                f"conversation '{conv_id}' is already processing another request"
+            )
 
         await state.lock.acquire()
         self.conversation_id = conv_id
@@ -136,7 +142,9 @@ class StepProgressTracker:
             )
         ]
 
-    def complete_step(self, query: Optional[str], description: str) -> List[StreamMessage]:
+    def complete_step(
+        self, query: Optional[str], description: str
+    ) -> List[StreamMessage]:
         normalized = query.strip() if query else ""
         if normalized:
             if normalized in self._completed_queries:
@@ -218,7 +226,22 @@ class EventProcessor:
         return [result]
 
     def _resolve_handler(self, event: object):
-        for cls in type(event).mro():
+        event_type = type(event)
+
+        handler = getattr(self, f"handle_{event_type.__name__}", None)
+        if handler is not None:
+            return handler
+
+        if isinstance(event, StructuredMessage):
+            content = getattr(event, "content", None)
+            if content is not None:
+                content_handler = getattr(
+                    self, f"handle_{type(content).__name__}Message", None
+                )
+                if content_handler is not None:
+                    return content_handler
+
+        for cls in event_type.mro()[1:]:
             handler = getattr(self, f"handle_{cls.__name__}", None)
             if handler is not None:
                 return handler
@@ -240,7 +263,9 @@ class EventProcessor:
             )
         elif route == "coding":
             self._final_agent_sources = {"coding_agent"}
-            end_description = "Coding support engaged – focusing on implementation guidance."
+            end_description = (
+                "Coding support engaged – focusing on implementation guidance."
+            )
             self._answer_step_description = (
                 "Producing code-focused explanations and solutions."
             )
@@ -255,9 +280,7 @@ class EventProcessor:
                 )
         else:
             self._final_agent_sources = {"report_agent"}
-            end_description = (
-                "Deep dive research selected – gathering sources for a comprehensive response."
-            )
+            end_description = "Deep dive research selected – gathering sources for a comprehensive response."
             self._answer_step_description = (
                 "Synthesizing findings from external research."
             )
@@ -277,11 +300,15 @@ class EventProcessor:
 
         return messages
 
-    def handle_ResearchPlanMessage(self, event: ResearchPlanMessage) -> List[StreamMessage]:
+    def handle_ResearchPlanMessage(
+        self, event: ResearchPlanMessage
+    ) -> List[StreamMessage]:
         self._active_research_plan = event.content
         return []
 
-    def handle_SearchQueryMessage(self, event: SearchQueryMessage) -> List[StreamMessage]:
+    def handle_SearchQueryMessage(
+        self, event: SearchQueryMessage
+    ) -> List[StreamMessage]:
         query = event.content.query.strip()
         if not query:
             return []
@@ -293,13 +320,13 @@ class EventProcessor:
             )
 
         messages.extend(
-            self._search_tracker.emit_status(
-                query, f'Searching with "{query}".'
-            )
+            self._search_tracker.emit_status(query, f'Searching with "{query}".')
         )
         return messages
 
-    def handle_SearchCandidatesMessage(self, event: SearchCandidatesMessage) -> List[StreamMessage]:
+    def handle_SearchCandidatesMessage(
+        self, event: SearchCandidatesMessage
+    ) -> List[StreamMessage]:
         query = event.content.query.strip()
         candidate_count = len(event.content.candidates)
         messages: List[StreamMessage] = []
@@ -310,9 +337,7 @@ class EventProcessor:
                     self._search_tracker.start_step(f'Searching for "{query}".')
                 )
             messages.extend(
-                self._search_tracker.emit_status(
-                    query, f'Searching with "{query}".'
-                )
+                self._search_tracker.emit_status(query, f'Searching with "{query}".')
             )
             messages.extend(
                 self._search_tracker.complete_step(
@@ -323,16 +348,18 @@ class EventProcessor:
             messages.extend(
                 self._search_tracker.complete_step(
                     None,
-                    (
-                        "Found {count} candidates without a specific query."
-                    ).format(count=candidate_count),
+                    ("Found {count} candidates without a specific query.").format(
+                        count=candidate_count
+                    ),
                 )
             )
 
         messages.extend(self._ensure_rank_step_started())
         return messages
 
-    def handle_RankedSearchResultsMessage(self, event: RankedSearchResultsMessage) -> List[StreamMessage]:
+    def handle_RankedSearchResultsMessage(
+        self, event: RankedSearchResultsMessage
+    ) -> List[StreamMessage]:
         messages: List[StreamMessage] = []
         messages.extend(self._ensure_rank_step_started())
 
@@ -391,7 +418,9 @@ class EventProcessor:
 
         return messages
 
-    def handle_SearchResultMessage(self, event: SearchResultMessage) -> List[StreamMessage]:
+    def handle_SearchResultMessage(
+        self, event: SearchResultMessage
+    ) -> List[StreamMessage]:
         fetched_pages: List[Page] = []
         seen_fetch_urls: Set[str] = set()
         fetch_limit: Optional[int] = None
@@ -463,7 +492,9 @@ class EventProcessor:
         )
         return messages
 
-    def handle_BaseTextChatMessage(self, event: BaseTextChatMessage) -> List[StreamMessage]:
+    def handle_BaseTextChatMessage(
+        self, event: BaseTextChatMessage
+    ) -> List[StreamMessage]:
         if event.source in self._final_agent_sources and event.content:
             self._fallback_segments.append(event.content)
         return []
@@ -483,7 +514,9 @@ class EventProcessor:
 
         final_answer = self._strip_termination_token("".join(self._answer_chunks))
         if not final_answer and self._fallback_segments:
-            final_answer = self._strip_termination_token("".join(self._fallback_segments))
+            final_answer = self._strip_termination_token(
+                "".join(self._fallback_segments)
+            )
 
         if not final_answer:
             report_segments: List[str] = []
