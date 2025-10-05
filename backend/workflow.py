@@ -207,33 +207,25 @@ class EventProcessor:
         self, event: ResearchPlanMessage
     ) -> List[StreamMessage]:
         self._active_research_plan = event.content
-        return []
+
+        query = event.content.queries[0]  # TODO: for simplicity only search one
+        messages: List[StreamMessage] = []
+        messages.extend(self._open_search_step(f'Searching for "{query}".'))
+        messages.append(
+            StepStatusMessage(
+                type="step.status",
+                title="Running web search",
+                description=f'Searching with "{query}".',
+            )
+        )
+        return messages
 
     def handle_SearchCandidatesMessage(
         self, event: SearchCandidatesMessage
     ) -> List[StreamMessage]:
-        query = event.content.query.strip()
         candidate_count = len(event.content.candidates)
         messages: List[StreamMessage] = []
-
-        if query:
-            messages.extend(self._open_search_step(f'Searching for "{query}".'))
-            messages.append(
-                StepStatusMessage(
-                    type="step.status",
-                    title="Running web search",
-                    description=f'Searching with "{query}".',
-                )
-            )
-            summary = f'Found {candidate_count} candidates for "{query}".'
-        else:
-            messages.extend(self._open_search_step("Running web search."))
-            summary = ("Found {count} candidates without a specific query.").format(
-                count=candidate_count
-            )
-
-        messages.extend(self._close_search_step(summary))
-
+        messages.extend(self._close_search_step(f"Found {candidate_count} candidates."))
         messages.extend(self._ensure_rank_step_started())
         return messages
 
