@@ -88,7 +88,7 @@ flowchart LR
     QA --> A[(Final Answer\nTERMINATE)]
 
     R -- deep_dive --> TD[today_date_agent]
-    R -- deep_dive --> RP[research_planner_agent\nResearchPlan]
+    TD --> RP[research_planner_agent\nResearchPlan]
     RP --> GS[google_search_agent\nSearchCandidates]
     GS --> SR[search_rank_agent\nRankedSearchResults]
     SR --> PF[page_fetch_agent\nSearchResult]
