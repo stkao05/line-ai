@@ -3,7 +3,6 @@ import logging
 import os
 from typing import AsyncIterator
 
-from agent import ask
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -17,6 +16,7 @@ from message import (
     SseEvent,
     SseMessageAdapter,
 )
+from workflow import ask
 
 logging.basicConfig(level=logging.WARNING)
 
