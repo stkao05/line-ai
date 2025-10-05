@@ -66,7 +66,7 @@ export function Chat() {
   );
 
   return (
-    <main className="max-w-[1000px] mx-auto pb-[120px]">
+    <main className="max-w-[1000px] mx-auto pb-24">
       <div className="space-y-4">
         {hasTurns ? (
           turns.map((turn, index) => <Turn key={index} turn={turn} />)
@@ -79,7 +79,7 @@ export function Chat() {
           />
         ) : null}
       </div>
-      <div className="fixed bottom-4 w-full max-w-[1000px]">
+      <div className="fixed bottom-6 w-full max-w-[1000px]">
         {error ? (
           <div className="mb-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
