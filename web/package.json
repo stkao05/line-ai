@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "openapi:dump": "curl --fail --silent ${NEXT_PUBLIC_CHAT_BASE_URL:-http://127.0.0.1:8000}/openapi.json > openapi.json",
+    "types:generate": "npx openapi-typescript openapi.json --output api-types.ts",
+    "types:sync": "npm run openapi:dump && npm run types:generate"
   },
   "dependencies": {
     "lucide-react": "^0.544.0",
