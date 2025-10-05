@@ -17,7 +17,6 @@ from agent import (
 )
 from autogen_agentchat.base import TaskResult
 from autogen_agentchat.messages import (
-    BaseChatMessage,
     BaseTextChatMessage,
     ModelClientStreamingChunkEvent,
     StructuredMessage,
@@ -85,105 +84,12 @@ class ConversationSession:
             self.state.lock.release()
 
 
-class StepProgressTracker:
-    """Track search step lifecycle and query-specific messaging state."""
-
-    def __init__(self, *, title: str) -> None:
-        self._title = title
-        self._open = False
-        self._started_queries: Set[str] = set()
-        self._status_announced: Set[str] = set()
-        self._completed_queries: Set[str] = set()
-        self._completed_without_query = False
-
-    @property
-    def title(self) -> str:
-        return self._title
-
-    @property
-    def is_open(self) -> bool:
-        return self._open
-
-    def start_step(self, description: str) -> List[StreamMessage]:
-        if self._open:
-            return []
-
-        self._open = True
-        return [
-            StepStartMessage(
-                type="step.start",
-                title=self._title,
-                description=description,
-            )
-        ]
-
-    def record_query(self, query: str) -> bool:
-        normalized = query.strip()
-        if not normalized or normalized in self._started_queries:
-            return False
-
-        self._started_queries.add(normalized)
-        return True
-
-    def emit_status(self, query: str, description: str) -> List[StreamMessage]:
-        normalized = query.strip()
-        if not normalized or normalized in self._status_announced:
-            return []
-
-        self._status_announced.add(normalized)
-        return [
-            StepStatusMessage(
-                type="step.status",
-                title=self._title,
-                description=description,
-            )
-        ]
-
-    def complete_step(
-        self, query: Optional[str], description: str
-    ) -> List[StreamMessage]:
-        normalized = query.strip() if query else ""
-        if normalized:
-            if normalized in self._completed_queries:
-                return []
-            self._completed_queries.add(normalized)
-        else:
-            if self._completed_without_query:
-                return []
-            self._completed_without_query = True
-
-        self._open = False
-        return [
-            StepEndMessage(
-                type="step.end",
-                title=self._title,
-                description=description,
-            )
-        ]
-
-
 class EventProcessor:
     """Dispatch agent events to dedicated handlers for streaming output."""
 
-    def __init__(
-        self,
-        *,
-        planning_title: str,
-        search_tracker: StepProgressTracker,
-        search_prepare_description: str,
-        rank_step_title: str,
-        fetch_step_title: str,
-        coding_step_title: str,
-        answer_step_title: str,
-    ) -> None:
-        self._planning_title = planning_title
+    def __init__(self) -> None:
         self._planning_step_open = False
-        self._search_tracker = search_tracker
-        self._search_prepare_description = search_prepare_description
-        self._rank_step_title = rank_step_title
-        self._fetch_step_title = fetch_step_title
-        self._coding_step_title = coding_step_title
-        self._answer_step_title = answer_step_title
+        self._search_step_open = False
 
         self._rank_step_started = False
         self._rank_step_completed = False
@@ -271,7 +177,7 @@ class EventProcessor:
                 messages.append(
                     StepStartMessage(
                         type="step.start",
-                        title=self._coding_step_title,
+                        title="Coding agent thinking",
                         description="Coding agent is thinking through the implementation details.",
                     )
                 )
@@ -282,14 +188,14 @@ class EventProcessor:
                 "Synthesizing findings from external research."
             )
             messages.extend(
-                self._search_tracker.start_step(self._search_prepare_description)
+                self._open_search_step("Preparing deep dive web search queries.")
             )
 
         if self._planning_step_open:
             messages.append(
                 StepEndMessage(
                     type="step.end",
-                    title=self._planning_title,
+                    title="Planning the appropriate route",
                     description=end_description,
                 )
             )
@@ -311,27 +217,22 @@ class EventProcessor:
         messages: List[StreamMessage] = []
 
         if query:
-            if self._search_tracker.record_query(query):
-                messages.extend(
-                    self._search_tracker.start_step(f'Searching for "{query}".')
-                )
-            messages.extend(
-                self._search_tracker.emit_status(query, f'Searching with "{query}".')
-            )
-            messages.extend(
-                self._search_tracker.complete_step(
-                    query, f'Found {candidate_count} candidates for "{query}".'
+            messages.extend(self._open_search_step(f'Searching for "{query}".'))
+            messages.append(
+                StepStatusMessage(
+                    type="step.status",
+                    title="Running web search",
+                    description=f'Searching with "{query}".',
                 )
             )
+            summary = f'Found {candidate_count} candidates for "{query}".'
         else:
-            messages.extend(
-                self._search_tracker.complete_step(
-                    None,
-                    ("Found {count} candidates without a specific query.").format(
-                        count=candidate_count
-                    ),
-                )
+            messages.extend(self._open_search_step("Running web search."))
+            summary = ("Found {count} candidates without a specific query.").format(
+                count=candidate_count
             )
+
+        messages.extend(self._close_search_step(summary))
 
         messages.extend(self._ensure_rank_step_started())
         return messages
@@ -380,7 +281,7 @@ class EventProcessor:
             messages.append(
                 StepEndMessage(
                     type="step.end",
-                    title=self._rank_step_title,
+                    title="Ranking candidate sources",
                     description=f"Selected {len(ranked_pages)} pages for deeper research.",
                 )
             )
@@ -390,7 +291,7 @@ class EventProcessor:
             messages.append(
                 StepFetchStartMessage(
                     type="step.fetch.start",
-                    title=self._fetch_step_title,
+                    title="Fetching supporting details",
                     pages=fetch_start_pages,
                 )
             )
@@ -434,7 +335,7 @@ class EventProcessor:
         return [
             StepFetchEndMessage(
                 type="step.fetch.end",
-                title=self._fetch_step_title,
+                title="Fetching supporting details",
                 pages=fetched_pages,
             )
         ]
@@ -454,7 +355,7 @@ class EventProcessor:
             messages.append(
                 StepEndMessage(
                     type="step.end",
-                    title=self._coding_step_title,
+                    title="Coding agent thinking",
                     description="Coding approach finalized – composing response.",
                 )
             )
@@ -465,7 +366,7 @@ class EventProcessor:
         messages.append(
             StepAnswerDeltaMessage(
                 type="step.answer.delta",
-                title=self._answer_step_title,
+                title="Answering the question",
                 delta=content,
             )
         )
@@ -485,7 +386,7 @@ class EventProcessor:
             messages.append(
                 StepEndMessage(
                     type="step.end",
-                    title=self._coding_step_title,
+                    title="Coding agent thinking",
                     description="Coding approach finalized – composing response.",
                 )
             )
@@ -513,7 +414,7 @@ class EventProcessor:
             messages.append(
                 StepAnswerEndMessage(
                     type="step.answer.end",
-                    title=self._answer_step_title,
+                    title="Answering the question",
                 )
             )
             self._answer_step_completed = True
@@ -531,6 +432,32 @@ class EventProcessor:
 
     # Helper utilities ----------------------------------------------
 
+    def _open_search_step(self, description: str) -> List[StreamMessage]:
+        if self._search_step_open:
+            return []
+
+        self._search_step_open = True
+        return [
+            StepStartMessage(
+                type="step.start",
+                title="Running web search",
+                description=description,
+            )
+        ]
+
+    def _close_search_step(self, description: str) -> List[StreamMessage]:
+        if not self._search_step_open:
+            return []
+
+        self._search_step_open = False
+        return [
+            StepEndMessage(
+                type="step.end",
+                title="Running web search",
+                description=description,
+            )
+        ]
+
     def _ensure_answer_step_started(self) -> List[StreamMessage]:
         if self._answer_step_started:
             return []
@@ -539,7 +466,7 @@ class EventProcessor:
         return [
             StepAnswerStartMessage(
                 type="step.answer.start",
-                title=self._answer_step_title,
+                title="Answering the question",
                 description=self._answer_step_description,
             )
         ]
@@ -552,7 +479,7 @@ class EventProcessor:
         return [
             StepStartMessage(
                 type="step.start",
-                title=self._rank_step_title,
+                title="Ranking candidate sources",
                 description="Prioritizing pages to review in depth.",
             )
         ]
@@ -602,28 +529,12 @@ async def ask(
             conversation_id=session.conversation_id,
         )
 
-        planning_title = "Planning the appropriate route"
-        search_step_title = "Running web search"
-        coding_step_title = "Coding agent thinking"
-        rank_step_title = "Ranking candidate sources"
-        fetch_step_title = "Fetching supporting details"
-        answer_step_title = "Answering the question"
-
-        search_tracker = StepProgressTracker(title=search_step_title)
-        processor = EventProcessor(
-            planning_title=planning_title,
-            search_tracker=search_tracker,
-            search_prepare_description="Preparing deep dive web search queries.",
-            rank_step_title=rank_step_title,
-            fetch_step_title=fetch_step_title,
-            coding_step_title=coding_step_title,
-            answer_step_title=answer_step_title,
-        )
+        processor = EventProcessor()
         processor.set_planning_active(True)
 
         yield StepStartMessage(
             type="step.start",
-            title=planning_title,
+            title="Planning the appropriate route",
             description="Evaluating best workflow for this request.",
         )
 
