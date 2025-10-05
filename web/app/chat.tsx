@@ -55,9 +55,14 @@ export function Chat() {
 
   const handleSuggestionSelect = useCallback(
     (suggestion: string) => {
-      setInput(suggestion);
+      // Auto-submit when a suggestion is clicked
+      if (status === "streaming") {
+        return;
+      }
+      sendMessage({ text: suggestion });
+      setInput("");
     },
-    [setInput]
+    [sendMessage, status]
   );
 
   return (
