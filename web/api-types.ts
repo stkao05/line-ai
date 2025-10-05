@@ -56,16 +56,6 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** AnswerDeltaMessage */
-        AnswerDeltaMessage: {
-            /**
-             * Type
-             * @constant
-             */
-            type: "answer-delta";
-            /** Delta */
-            delta: string;
-        };
         /** AnswerMessage */
         AnswerMessage: {
             /**
@@ -135,30 +125,7 @@ export interface components {
              */
             event: "message";
             /** Data */
-            data: components["schemas"]["TurnStartMessage"] | components["schemas"]["TurnStatusMessage"] | components["schemas"]["SearchStartMessage"] | components["schemas"]["SearchEndMessage"] | components["schemas"]["RankStartMessage"] | components["schemas"]["RankEndMessage"] | components["schemas"]["FetchStartMessage"] | components["schemas"]["FetchEndMessage"] | components["schemas"]["AnswerDeltaMessage"] | components["schemas"]["AnswerMessage"];
-        };
-        /** FetchEndMessage */
-        FetchEndMessage: {
-            /**
-             * Type
-             * @constant
-             */
-            type: "fetch.end";
-            /**
-             * Pages
-             * @default null
-             */
-            pages: components["schemas"]["Page"][] | null;
-        };
-        /** FetchStartMessage */
-        FetchStartMessage: {
-            /**
-             * Type
-             * @constant
-             */
-            type: "fetch.start";
-            /** Pages */
-            pages: components["schemas"]["Page"][];
+            data: components["schemas"]["TurnStartMessage"] | components["schemas"]["StepStartMessage"] | components["schemas"]["StepEndMessage"] | components["schemas"]["StepFetchStartMessage"] | components["schemas"]["StepFetchEndMessage"] | components["schemas"]["StepAnswerStartMessage"] | components["schemas"]["StepAnswerDeltaMessage"] | components["schemas"]["StepAnswerEndMessage"] | components["schemas"]["AnswerMessage"];
         };
         /**
          * Page
@@ -183,45 +150,93 @@ export interface components {
              */
             favicon: string | null;
         };
-        /** RankEndMessage */
-        RankEndMessage: {
+        /** StepAnswerDeltaMessage */
+        StepAnswerDeltaMessage: {
             /**
              * Type
              * @constant
              */
-            type: "rank.end";
+            type: "step.answer.delta";
+            /** Title */
+            title: string;
+            /** Delta */
+            delta: string;
+        };
+        /** StepAnswerEndMessage */
+        StepAnswerEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "step.answer.end";
+            /** Title */
+            title: string;
+        };
+        /** StepAnswerStartMessage */
+        StepAnswerStartMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "step.answer.start";
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+        };
+        /** StepEndMessage */
+        StepEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "step.end";
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+        };
+        /** StepFetchEndMessage */
+        StepFetchEndMessage: {
+            /**
+             * Type
+             * @constant
+             */
+            type: "step.fetch.end";
+            /** Title */
+            title: string;
             /** Pages */
             pages: components["schemas"]["Page"][];
         };
-        /** RankStartMessage */
-        RankStartMessage: {
+        /** StepFetchStartMessage */
+        StepFetchStartMessage: {
             /**
              * Type
              * @constant
              */
-            type: "rank.start";
+            type: "step.fetch.start";
+            /** Title */
+            title: string;
+            /** Pages */
+            pages: components["schemas"]["Page"][];
         };
-        /** SearchEndMessage */
-        SearchEndMessage: {
+        /** StepStartMessage */
+        StepStartMessage: {
             /**
              * Type
              * @constant
              */
-            type: "search.end";
-            /** Query */
-            query: string;
-            /** Results */
-            results: number;
-        };
-        /** SearchStartMessage */
-        SearchStartMessage: {
-            /**
-             * Type
-             * @constant
-             */
-            type: "search.start";
-            /** Query */
-            query: string;
+            type: "step.start";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
         };
         /** TurnStartMessage */
         TurnStartMessage: {
@@ -232,18 +247,6 @@ export interface components {
             type: "turn.start";
             /** Conversation Id */
             conversation_id: string;
-        };
-        /** TurnStatusMessage */
-        TurnStatusMessage: {
-            /**
-             * Type
-             * @constant
-             */
-            type: "turn.status";
-            /** Title */
-            title: string;
-            /** Description */
-            description: string;
         };
     };
     responses: never;

@@ -29,33 +29,70 @@ export const EXAMPLE_TURN: TurnData = {
     "What is the fastest way to get up to speed with Rust if I already write a lot of JavaScript?",
   messages: [
     {
-      type: "search.start",
-      query: "fastest way to learn rust for javascript developers",
+      type: "turn.start",
+      conversation_id: "example-turn",
     },
     {
-      type: "search.end",
-      query: "fastest way to learn rust for javascript developers",
-      results: 18,
+      type: "step.start",
+      title: "Planning the appropriate route",
+      description: "Evaluating best workflow for this request.",
     },
     {
-      type: "rank.start",
+      type: "step.end",
+      title: "Planning the appropriate route",
+      description:
+        "Deep dive research selected – gathering sources for a comprehensive response.",
     },
     {
-      type: "rank.end",
+      type: "step.start",
+      title: "Running web search",
+      description: "Searching for \"fastest way to learn rust for javascript developers\".",
+    },
+    {
+      type: "step.end",
+      title: "Running web search",
+      description: "Found 18 candidates for \"fastest way to learn rust for javascript developers\".",
+    },
+    {
+      type: "step.start",
+      title: "Ranking candidate sources",
+      description: "Prioritizing pages to review in depth.",
+    },
+    {
+      type: "step.end",
+      title: "Ranking candidate sources",
+      description: "Selected 3 pages for deeper research.",
+    },
+    {
+      type: "step.fetch.start",
+      title: "Fetching supporting details",
       pages: EXAMPLE_PAGES,
     },
     {
-      type: "fetch.start",
+      type: "step.fetch.end",
+      title: "Fetching supporting details",
       pages: EXAMPLE_PAGES,
     },
     {
-      type: "fetch.end",
-      pages: EXAMPLE_PAGES,
+      type: "step.answer.start",
+      title: "Answering the question",
+      description: "Synthesizing findings from external research.",
     },
     {
-      type: "answer-delta",
+      type: "step.answer.delta",
+      title: "Answering the question",
       delta:
         "Rust rewards learning by building. Start with a concise primer on ownership and borrowing, then move directly into shipping a small CLI where you can feel the compiler guiding you.",
+    },
+    {
+      type: "step.answer.end",
+      title: "Answering the question",
+    },
+    {
+      type: "answer",
+      answer:
+        "Rust rewards learning by building. Start with a concise primer on ownership and borrowing, then move directly into shipping a small CLI where you can feel the compiler guiding you.",
+      citations: EXAMPLE_PAGES,
     },
   ],
 };

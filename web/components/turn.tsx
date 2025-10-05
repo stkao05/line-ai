@@ -16,36 +16,26 @@ export type {
 export type { TurnReference } from "./answer-section";
 
 const AGENT_WORKFLOW_TITLE = "Agent Workflow";
-
-type TurnStartMessage = Extract<StreamMessage, { type: "turn.start" }>;
-type TurnStatusMessage = Extract<StreamMessage, { type: "turn.status" }>;
-type SearchStartMessage = Extract<StreamMessage, { type: "search.start" }>;
-type SearchEndMessage = Extract<StreamMessage, { type: "search.end" }>;
-type RankStartMessage = Extract<StreamMessage, { type: "rank.start" }>;
-type RankEndMessage = Extract<StreamMessage, { type: "rank.end" }>;
-type FetchStartMessage = Extract<StreamMessage, { type: "fetch.start" }>;
-type FetchEndMessage = Extract<StreamMessage, { type: "fetch.end" }>;
-type AnswerDeltaMessage = Extract<StreamMessage, { type: "answer-delta" }>;
+type StepStartMessage = Extract<StreamMessage, { type: "step.start" }>;
+type StepEndMessage = Extract<StreamMessage, { type: "step.end" }>;
+type StepFetchStartMessage = Extract<StreamMessage, { type: "step.fetch.start" }>;
+type StepFetchEndMessage = Extract<StreamMessage, { type: "step.fetch.end" }>;
+type StepAnswerStartMessage = Extract<StreamMessage, { type: "step.answer.start" }>;
+type StepAnswerDeltaMessage = Extract<StreamMessage, { type: "step.answer.delta" }>;
+type StepAnswerEndMessage = Extract<StreamMessage, { type: "step.answer.end" }>;
 type AnswerMessage = Extract<StreamMessage, { type: "answer" }>;
+
+const PLANNING_STEP_TITLE = "Planning the appropriate route";
+const SEARCH_STEP_TITLE = "Running web search";
+const RANK_STEP_TITLE = "Ranking candidate sources";
+const FETCH_STEP_TITLE = "Fetching supporting details";
+const ANSWER_STEP_TITLE = "Answering the question";
 
 function getLast<T>(items: readonly T[]): T | undefined {
   if (items.length === 0) {
     return undefined;
   }
   return items[items.length - 1];
-}
-
-function findLast<T>(
-  items: readonly T[],
-  predicate: (value: T) => boolean
-): T | undefined {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const value = items[index];
-    if (predicate(value)) {
-      return value;
-    }
-  }
-  return undefined;
 }
 
 function truncate(text: string, maxLength = 200): string {
@@ -148,141 +138,163 @@ function computeStepStatus(
   return "pending";
 }
 
+function uniqueDescriptions(
+  descriptions: readonly (string | null | undefined)[]
+): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const description of descriptions) {
+    const normalized = description?.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function renderDescriptionItems(items: string[]): ReactNode {
+  return (
+    <ul className="space-y-1">
+      {items.map((text) => (
+        <li key={text}>{text}</li>
+      ))}
+    </ul>
+  );
+}
+
 function buildWorkflowSteps(messages: StreamMessage[]): AgentWorkflowStep[] {
-  const turnStarts = messages.filter(
-    (message): message is TurnStartMessage => message.type === "turn.start"
+  const stepStarts = messages.filter(
+    (message): message is StepStartMessage => message.type === "step.start"
   );
-  const turnStatusMessages = messages.filter(
-    (message): message is TurnStatusMessage => message.type === "turn.status"
+  const stepEnds = messages.filter(
+    (message): message is StepEndMessage => message.type === "step.end"
   );
-  const searchStarts = messages.filter(
-    (message): message is SearchStartMessage => message.type === "search.start"
-  );
-  const searchEnds = messages.filter(
-    (message): message is SearchEndMessage => message.type === "search.end"
-  );
-  const searchQueries = Array.from(
-    new Set([...searchStarts, ...searchEnds].map((message) => message.query))
-  );
-  const searchDetail =
-    searchQueries.length === 0 ? (
-      "Waiting for search to begin."
-    ) : (
-      <ul className="space-y-1">
-        {searchQueries.map((query) => {
-          const endMessage = findLast(
-            searchEnds,
-            (message) => message.query === query
-          );
-          const resultLabel = endMessage
-            ? `${endMessage.results} result${endMessage.results === 1 ? "" : "s"}`
-            : "Searching…";
-
-          return (
-            <li key={query} className="space-y-0.5">
-              <span>“{query}”</span>
-              <span className="block text-xs text-zinc-500">{resultLabel}</span>
-            </li>
-          );
-        })}
-      </ul>
-    );
-
-  const rankStarts = messages.filter(
-    (message): message is RankStartMessage => message.type === "rank.start"
-  );
-  const rankEnds = messages.filter(
-    (message): message is RankEndMessage => message.type === "rank.end"
-  );
-  const latestRankEnd = getLast(rankEnds);
-  const rankDetail = latestRankEnd
-    ? `Ranked ${latestRankEnd.pages.length} candidate page${latestRankEnd.pages.length === 1 ? "" : "s"}.`
-    : rankStarts.length > 0
-      ? "Ranking candidate pages…"
-      : "Waiting for ranking step.";
-
   const fetchStarts = messages.filter(
-    (message): message is FetchStartMessage => message.type === "fetch.start"
+    (message): message is StepFetchStartMessage => message.type === "step.fetch.start"
   );
   const fetchEnds = messages.filter(
-    (message): message is FetchEndMessage => message.type === "fetch.end"
+    (message): message is StepFetchEndMessage => message.type === "step.fetch.end"
   );
-  const latestFetchEnd = getLast(fetchEnds);
-  const fetchPages = latestFetchEnd?.pages ?? getLast(fetchStarts)?.pages ?? [];
-  const fetchDetail =
-    fetchPages && fetchPages.length > 0
-      ? renderPageList(fetchPages, { variant: "fetch" })
-      : fetchStarts.length > 0
-        ? "Fetching selected sources…"
-        : "Waiting for document fetch step.";
-
+  const answerStarts = messages.filter(
+    (message): message is StepAnswerStartMessage => message.type === "step.answer.start"
+  );
+  const answerDeltas = messages.filter(
+    (message): message is StepAnswerDeltaMessage =>
+      message.type === "step.answer.delta"
+  );
+  const answerEnds = messages.filter(
+    (message): message is StepAnswerEndMessage => message.type === "step.answer.end"
+  );
   const answerMessages = messages.filter(
     (message): message is AnswerMessage => message.type === "answer"
   );
-  const answerDeltas = messages.filter(
-    (message): message is AnswerDeltaMessage => message.type === "answer-delta"
+
+  const planningStarts = stepStarts.filter(
+    (message) => message.title === PLANNING_STEP_TITLE
   );
-  const latestAnswer = getLast(answerMessages);
-  const rawFinalAnswer = latestAnswer?.answer?.trim();
-  const answerDetail = rawFinalAnswer
+  const planningEnds = stepEnds.filter(
+    (message) => message.title === PLANNING_STEP_TITLE
+  );
+  const planningDetail =
+    uniqueDescriptions(planningEnds.map((message) => message.description))[0] ??
+    uniqueDescriptions(planningStarts.map((message) => message.description))[0] ??
+    "Waiting for planning step.";
+  const planningStatus = computeStepStatus(
+    planningStarts.length > 0,
+    planningEnds.length > 0 && planningEnds.length >= planningStarts.length
+  );
+
+  const searchStarts = stepStarts.filter(
+    (message) => message.title === SEARCH_STEP_TITLE
+  );
+  const searchEnds = stepEnds.filter(
+    (message) => message.title === SEARCH_STEP_TITLE
+  );
+  const searchEndDescriptions = uniqueDescriptions(
+    searchEnds.map((message) => message.description)
+  );
+  const searchStartDescriptions = uniqueDescriptions(
+    searchStarts.map((message) => message.description)
+  );
+  const searchDetail: ReactNode = searchEndDescriptions.length > 0
+    ? renderDescriptionItems(searchEndDescriptions)
+    : searchStartDescriptions.length > 0
+      ? renderDescriptionItems(searchStartDescriptions)
+      : "Waiting for search to begin.";
+  const searchStatus = computeStepStatus(
+    searchStarts.length > 0,
+    searchEnds.length > 0 && searchEnds.length >= searchStarts.length
+  );
+
+  const rankStarts = stepStarts.filter(
+    (message) => message.title === RANK_STEP_TITLE
+  );
+  const rankEnds = stepEnds.filter(
+    (message) => message.title === RANK_STEP_TITLE
+  );
+  const rankDetail =
+    uniqueDescriptions(rankEnds.map((message) => message.description)).pop() ??
+    uniqueDescriptions(rankStarts.map((message) => message.description)).pop() ??
+    "Waiting for ranking step.";
+  const rankStatus = computeStepStatus(
+    rankStarts.length > 0,
+    rankEnds.length > 0 && rankEnds.length >= rankStarts.length
+  );
+
+  const latestFetchEnd = getLast(fetchEnds);
+  const latestFetchStart = getLast(fetchStarts);
+  const fetchPages = latestFetchEnd?.pages ?? latestFetchStart?.pages ?? [];
+  const fetchStatus = computeStepStatus(
+    fetchStarts.length > 0,
+    fetchEnds.length > 0 && fetchEnds.length >= fetchStarts.length
+  );
+  const fetchDetail: ReactNode = fetchPages.length > 0
+    ? renderPageList(fetchPages, { variant: "fetch" })
+    : fetchStatus === "active"
+      ? "Fetching selected sources…"
+      : "Waiting for document fetch step.";
+
+  const answerHasStarted =
+    answerStarts.length > 0 || answerDeltas.length > 0 || answerMessages.length > 0;
+  const answerHasCompleted =
+    answerMessages.length > 0 || answerEnds.length > 0;
+  const answerStatus = computeStepStatus(answerHasStarted, answerHasCompleted);
+  const answerIntro =
+    uniqueDescriptions(answerStarts.map((message) => message.description))[0];
+  const answerDetail = answerHasCompleted
     ? "Final response prepared."
     : answerDeltas.length > 0
-      ? "Composing response…"
-      : "Waiting for synthesis step.";
-
-  const latestTurnStatus = getLast(turnStatusMessages);
-  const hasTurnStart = turnStarts.length > 0;
-  const hasActivityBeyondPlanning = messages.some(
-    (message) =>
-      message.type !== "turn.start" && message.type !== "turn.status"
-  );
-  const thinkingStatus: AgentWorkflowStatus = hasTurnStart
-    ? hasActivityBeyondPlanning
-      ? "complete"
-      : "active"
-    : latestTurnStatus
-      ? "active"
-      : "pending";
-  const thinkingTitle = latestTurnStatus
-    ? latestTurnStatus.title
-    : "Thinking through the request";
-  const thinkingDetail: ReactNode = latestTurnStatus
-    ? latestTurnStatus.description
-    : hasTurnStart
-      ? "Assessing the question before taking action."
-      : "Waiting for the agent to begin.";
+      ? answerIntro ?? "Composing response…"
+      : answerIntro ?? "Waiting for synthesis step.";
 
   return [
     {
-      title: thinkingTitle,
-      status: thinkingStatus,
-      detail: thinkingDetail,
+      title: PLANNING_STEP_TITLE,
+      status: planningStatus,
+      detail: planningDetail,
     },
     {
-      title: "Searching the knowledge base",
-      status: computeStepStatus(searchStarts.length > 0, searchEnds.length > 0),
+      title: SEARCH_STEP_TITLE,
+      status: searchStatus,
       detail: searchDetail,
     },
     {
-      title: "Ranking potential sources",
-      status: computeStepStatus(rankStarts.length > 0, Boolean(latestRankEnd)),
+      title: RANK_STEP_TITLE,
+      status: rankStatus,
       detail: rankDetail,
     },
     {
-      title: "Fetching supporting details",
-      status: computeStepStatus(
-        fetchStarts.length > 0,
-        Boolean(latestFetchEnd)
-      ),
+      title: FETCH_STEP_TITLE,
+      status: fetchStatus,
       detail: fetchDetail,
     },
     {
-      title: "Answering the question",
-      status: latestAnswer
-        ? "complete"
-        : answerDeltas.length > 0
-          ? "active"
-          : "pending",
+      title: ANSWER_STEP_TITLE,
+      status: answerStatus,
       detail: answerDetail,
     },
   ];
@@ -324,7 +336,8 @@ function extractAnswer(messages: StreamMessage[]): {
   );
   const latestAnswer = getLast(answerMessages);
   const answerDeltas = messages.filter(
-    (message): message is AnswerDeltaMessage => message.type === "answer-delta"
+    (message): message is StepAnswerDeltaMessage =>
+      message.type === "step.answer.delta"
   );
   const combinedAnswer =
     latestAnswer?.answer ??

@@ -26,50 +26,50 @@ class BaseStreamMessage(BaseModel):
     }
 
 
-class SearchStartMessage(BaseStreamMessage):
-    type: Literal["search.start"]
-    query: str
-
-
 class TurnStartMessage(BaseStreamMessage):
     type: Literal["turn.start"]
     conversation_id: str
 
 
-class TurnStatusMessage(BaseStreamMessage):
-    type: Literal["turn.status"]
+class StepStartMessage(BaseStreamMessage):
+    type: Literal["step.start"]
     title: str
     description: str
 
 
-class SearchEndMessage(BaseStreamMessage):
-    type: Literal["search.end"]
-    query: str
-    results: int
+class StepEndMessage(BaseStreamMessage):
+    type: Literal["step.end"]
+    title: str
+    description: str | None = None
 
 
-class RankStartMessage(BaseStreamMessage):
-    type: Literal["rank.start"]
-
-
-class RankEndMessage(BaseStreamMessage):
-    type: Literal["rank.end"]
+class StepFetchStartMessage(BaseStreamMessage):
+    type: Literal["step.fetch.start"]
+    title: str
     pages: Sequence[Page]
 
 
-class FetchStartMessage(BaseStreamMessage):
-    type: Literal["fetch.start"]
+class StepFetchEndMessage(BaseStreamMessage):
+    type: Literal["step.fetch.end"]
+    title: str
     pages: Sequence[Page]
 
 
-class FetchEndMessage(BaseStreamMessage):
-    type: Literal["fetch.end"]
-    pages: Sequence[Page] | None = None
+class StepAnswerStartMessage(BaseStreamMessage):
+    type: Literal["step.answer.start"]
+    title: str
+    description: str | None = None
 
 
-class AnswerDeltaMessage(BaseStreamMessage):
-    type: Literal["answer-delta"]
+class StepAnswerDeltaMessage(BaseStreamMessage):
+    type: Literal["step.answer.delta"]
+    title: str
     delta: str
+
+
+class StepAnswerEndMessage(BaseStreamMessage):
+    type: Literal["step.answer.end"]
+    title: str
 
 
 class AnswerMessage(BaseStreamMessage):
@@ -80,14 +80,13 @@ class AnswerMessage(BaseStreamMessage):
 
 StreamMessage: TypeAlias = (
     TurnStartMessage
-    | TurnStatusMessage
-    | SearchStartMessage
-    | SearchEndMessage
-    | RankStartMessage
-    | RankEndMessage
-    | FetchStartMessage
-    | FetchEndMessage
-    | AnswerDeltaMessage
+    | StepStartMessage
+    | StepEndMessage
+    | StepFetchStartMessage
+    | StepFetchEndMessage
+    | StepAnswerStartMessage
+    | StepAnswerDeltaMessage
+    | StepAnswerEndMessage
     | AnswerMessage
 )
 
@@ -171,7 +170,6 @@ class SseMessageAdapter:
 
 
 __all__ = [
-    "AnswerDeltaMessage",
     "AnswerMessage",
     "ChatDoneEnvelope",
     "ChatDonePayload",
@@ -179,15 +177,15 @@ __all__ = [
     "ChatErrorPayload",
     "ChatStreamEnvelope",
     "ChatSseEvent",
-    "TurnStatusMessage",
     "TurnStartMessage",
-    "FetchEndMessage",
-    "FetchStartMessage",
     "Page",
-    "RankEndMessage",
-    "RankStartMessage",
-    "SearchEndMessage",
-    "SearchStartMessage",
+    "StepAnswerEndMessage",
+    "StepAnswerDeltaMessage",
+    "StepAnswerStartMessage",
+    "StepEndMessage",
+    "StepFetchEndMessage",
+    "StepFetchStartMessage",
+    "StepStartMessage",
     "SseEvent",
     "SseMessageAdapter",
     "StreamMessage",

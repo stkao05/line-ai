@@ -19,18 +19,17 @@ from autogen_agentchat.teams import DiGraphBuilder, GraphFlow
 from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from message import (
-    AnswerDeltaMessage,
     AnswerMessage,
-    FetchEndMessage,
-    FetchStartMessage,
     Page,
-    RankEndMessage,
-    RankStartMessage,
-    SearchEndMessage,
-    SearchStartMessage,
+    StepAnswerDeltaMessage,
+    StepAnswerEndMessage,
+    StepAnswerStartMessage,
+    StepEndMessage,
+    StepFetchEndMessage,
+    StepFetchStartMessage,
+    StepStartMessage,
     StreamMessage,
     TurnStartMessage,
-    TurnStatusMessage,
 )
 from pydantic import BaseModel, ValidationError
 from tools import fetch_page, google_search
@@ -38,7 +37,7 @@ from tools import fetch_page, google_search
 openai_api_key = os.getenv("OPENAI_API_KEY")
 general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
-coding_model = OpenAIChatCompletionClient(model="gpt-4.1", api_key=openai_api_key)
+coding_model = OpenAIChatCompletionClient(model="gpt-5", api_key=openai_api_key)
 
 
 @dataclass
@@ -582,7 +581,8 @@ async def ask(
     try:
         search_started: Set[str] = set()
         search_completed: Set[str] = set()
-        rank_started = False
+        rank_step_started = False
+        rank_step_completed = False
         fetch_announced: Set[str] = set()
         answer_chunks: List[str] = []
         fallback_segments: List[str] = []
@@ -628,30 +628,54 @@ async def ask(
             conversation_id=conv_id,
         )
 
+        planning_title = "Planning the appropriate route"
+        search_step_title = "Running web search"
+        rank_step_title = "Ranking candidate sources"
+        fetch_step_title = "Fetching supporting details"
+        answer_step_title = "Answering the question"
+        yield StepStartMessage(
+            type="step.start",
+            title=planning_title,
+            description="Evaluating best workflow for this request.",
+        )
+
+        planning_step_open = True
+        answer_step_started = False
+        answer_step_completed = False
+        answer_step_description: Optional[str] = None
+
         async for event in state.team.run_stream(task=user_message):
             if isinstance(event, RoutePlanMessage):
                 route = event.content.route
-                status_title: str
-                status_description: str
+                end_description: str
                 if route == "quick_answer":
                     final_agent_sources = {"quick_answer_agent"}
-                    status_title = "Quick answer selected"
-                    status_description = "Responding directly using existing knowledge without external research."
+                    end_description = "Quick answer selected – responding directly using existing knowledge."
+                    answer_step_description = (
+                        "Drafting a direct reply without additional research."
+                    )
                 elif route == "coding":
                     final_agent_sources = {"coding_agent"}
-                    status_title = "Coding support engaged"
-                    status_description = (
-                        "Focusing on code-specific guidance and implementation details."
+                    end_description = (
+                        "Coding support engaged – focusing on implementation guidance."
+                    )
+                    answer_step_description = (
+                        "Producing code-focused explanations and solutions."
                     )
                 else:
                     final_agent_sources = {"report_agent"}
-                    status_title = "Start deep dive research"
-                    status_description = "Gathering sources, ranking findings, and preparing a comprehensive report."
-                yield TurnStatusMessage(
-                    type="turn.status",
-                    title=status_title,
-                    description=status_description,
-                )
+                    end_description = "Deep dive research selected – gathering sources for a comprehensive response."
+                    answer_step_description = (
+                        "Synthesizing findings from external research."
+                    )
+
+                if planning_step_open:
+                    yield StepEndMessage(
+                        type="step.end",
+                        title=planning_title,
+                        description=end_description,
+                    )
+                    planning_step_open = False
                 continue
 
             if isinstance(event, ResearchPlanMessage):
@@ -662,7 +686,11 @@ async def ask(
                 query = event.content.query.strip()
                 if query and query not in search_started:
                     search_started.add(query)
-                    yield SearchStartMessage(type="search.start", query=query)
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=search_step_title,
+                        description=f'Searching for "{query}".',
+                    )
                 continue
 
             if isinstance(event, SearchCandidatesMessage):
@@ -670,26 +698,40 @@ async def ask(
 
                 if query and query not in search_started:
                     search_started.add(query)
-                    yield SearchStartMessage(type="search.start", query=query)
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=search_step_title,
+                        description=f'Searching for "{query}".',
+                    )
 
                 if query and query not in search_completed:
                     search_completed.add(query)
-                    yield SearchEndMessage(
-                        type="search.end",
-                        query=query,
-                        results=len(event.content.candidates),
+                    yield StepEndMessage(
+                        type="step.end",
+                        title=search_step_title,
+                        description=(
+                            f'Found {len(event.content.candidates)} candidates for "{query}".'
+                        ),
                     )
 
-                if not rank_started:
-                    rank_started = True
-                    yield RankStartMessage(type="rank.start")
+                if not rank_step_started:
+                    rank_step_started = True
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=rank_step_title,
+                        description="Prioritizing pages to review in depth.",
+                    )
 
                 continue
 
             if isinstance(event, RankedSearchResultsMessage):
-                if not rank_started:
-                    rank_started = True
-                    yield RankStartMessage(type="rank.start")
+                if not rank_step_started:
+                    rank_step_started = True
+                    yield StepStartMessage(
+                        type="step.start",
+                        title=rank_step_title,
+                        description="Prioritizing pages to review in depth.",
+                    )
 
                 ranked_pages: List[Page] = []
                 seen_rank_urls: Set[str] = set()
@@ -723,10 +765,22 @@ async def ask(
                             fetch_announced.add(url)
                             fetch_start_pages.append(ranked_page)
 
-                yield RankEndMessage(type="rank.end", pages=ranked_pages)
+                if not rank_step_completed:
+                    yield StepEndMessage(
+                        type="step.end",
+                        title=rank_step_title,
+                        description=(
+                            f"Selected {len(ranked_pages)} pages for deeper research."
+                        ),
+                    )
+                    rank_step_completed = True
 
                 if fetch_start_pages:
-                    yield FetchStartMessage(type="fetch.start", pages=fetch_start_pages)
+                    yield StepFetchStartMessage(
+                        type="step.fetch.start",
+                        title=fetch_step_title,
+                        pages=fetch_start_pages,
+                    )
 
                 continue
 
@@ -761,9 +815,10 @@ async def ask(
                             break
 
                 latest_citation_pages = fetched_pages
-                yield FetchEndMessage(
-                    type="fetch.end",
-                    pages=fetched_pages or None,
+                yield StepFetchEndMessage(
+                    type="step.fetch.end",
+                    title=fetch_step_title,
+                    pages=fetched_pages,
                 )
 
                 continue
@@ -772,8 +827,19 @@ async def ask(
                 if event.source in final_agent_sources:
                     content = event.content or ""
                     if content:
+                        if not answer_step_started:
+                            yield StepAnswerStartMessage(
+                                type="step.answer.start",
+                                title=answer_step_title,
+                                description=answer_step_description,
+                            )
+                            answer_step_started = True
                         answer_chunks.append(content)
-                        yield AnswerDeltaMessage(type="answer-delta", delta=content)
+                        yield StepAnswerDeltaMessage(
+                            type="step.answer.delta",
+                            title=answer_step_title,
+                            delta=content,
+                        )
                 continue
 
             if (
@@ -804,6 +870,21 @@ async def ask(
                             report_segments.append(message.content)
                     final_answer = strip_termination_token("".join(report_segments))
 
+                if not answer_step_started:
+                    yield StepAnswerStartMessage(
+                        type="step.answer.start",
+                        title=answer_step_title,
+                        description=answer_step_description,
+                    )
+                    answer_step_started = True
+
+                if not answer_step_completed:
+                    yield StepAnswerEndMessage(
+                        type="step.answer.end",
+                        title=answer_step_title,
+                    )
+                    answer_step_completed = True
+
                 yield AnswerMessage(
                     type="answer",
                     answer=final_answer,
@@ -819,7 +900,8 @@ if __name__ == "__main__":
     import asyncio
 
     async def _demo() -> None:
-        question = "Could you write topological sort in Python"
+        question = "why is sky blue"
+        # question = "Could you write topological sort in Python"
         print(f"Running trial ask() for: {question}")
         conversation_id: str | None = None
         async for message in ask(question):

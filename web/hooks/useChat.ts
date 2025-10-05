@@ -25,14 +25,13 @@ function isStreamMessage(value: unknown): value is StreamMessage {
   const { type } = value as { type?: unknown };
   return (
     type === "turn.start" ||
-    type === "turn.status" ||
-    type === "search.start" ||
-    type === "search.end" ||
-    type === "rank.start" ||
-    type === "rank.end" ||
-    type === "fetch.start" ||
-    type === "fetch.end" ||
-    type === "answer-delta" ||
+    type === "step.start" ||
+    type === "step.end" ||
+    type === "step.fetch.start" ||
+    type === "step.fetch.end" ||
+    type === "step.answer.start" ||
+    type === "step.answer.delta" ||
+    type === "step.answer.end" ||
     type === "answer"
   );
 }
