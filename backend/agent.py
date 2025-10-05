@@ -18,7 +18,7 @@ from tools import fetch_page, google_search
 openai_api_key = os.getenv("OPENAI_API_KEY")
 general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
-coding_model = OpenAIChatCompletionClient(model="gpt-5", api_key=openai_api_key)
+coding_model = OpenAIChatCompletionClient(model="gpt-4", api_key=openai_api_key)
 
 
 class SearchCandidateItem(BaseModel):
@@ -218,59 +218,28 @@ class PageFetchAgent(BaseChatAgent):
     async def on_messages(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> Response:
-        plan_message = _latest_message_of_type(messages, ResearchPlanMessage)
-        fetch_limit: Optional[int] = None
-        if isinstance(plan_message, ResearchPlanMessage):
-            fetch_limit = max(0, plan_message.content.fetch_page_limit)
-
-        ranked_message: Optional[RankedSearchResultsMessage] = None
-        for message in reversed(messages):
-            if isinstance(message, RankedSearchResultsMessage):
-                ranked_message = message
-                break
-
-        def _clean(text: Optional[str]) -> str:
-            return text.strip() if isinstance(text, str) else ""
+        ranked_message: Optional[RankedSearchResultsMessage] = _latest_message_of_type(
+            messages, RankedSearchResultsMessage
+        )
 
         results: List[SearchResultItem] = []
 
         if ranked_message is not None:
             selections = list(ranked_message.content.selections)
-            if fetch_limit is not None:
-                if fetch_limit == 0:
-                    selections = []
-                else:
-                    selections = selections[:fetch_limit]
 
             async def fetch(
                 selection: RankedSearchResultItem,
             ) -> tuple[RankedSearchResultItem, Dict[str, str]] | None:
-                url = _clean(selection.url)
-                if not url:
+                if not selection.url:
                     return None
-
                 try:
-                    payload = await fetch_page(url=url, max_chars=self._max_chars)
-                except Exception as exc:  # pragma: no cover - defensive guardrail
-                    payload = {
-                        "url": url,
-                        "title": url,
-                        "content": f"ERROR: failed to fetch page content ({exc})",
-                    }
-                else:
+                    payload = await fetch_page(
+                        url=selection.url, max_chars=self._max_chars
+                    )
                     if payload is None:
-                        payload = {
-                            "url": url,
-                            "title": url,
-                            "content": "Content unavailable.",
-                        }
-
-                if not isinstance(payload, dict):
-                    payload = {
-                        "url": url,
-                        "title": url,
-                        "content": "Content unavailable.",
-                    }
+                        return None
+                except Exception:
+                    return None
 
                 return selection, payload
 
@@ -284,25 +253,21 @@ class PageFetchAgent(BaseChatAgent):
                     continue
 
                 selection, payload = item
-                url = _clean(selection.url)
-                fetched_url = _clean(payload.get("url")) or url
-                title = (
-                    _clean(payload.get("title"))
-                    or _clean(selection.title)
-                    or fetched_url
+                url = selection.url
+                title = payload.get("title") or url
+                content = payload.get("content")
+                snippet = selection.snippet or (
+                    content[:200].strip() if content else ""
                 )
-                content = _clean(payload.get("content"))
-                snippet_seed = _clean(selection.snippet)
-                snippet = snippet_seed or (content[:200].strip() if content else "")
-                favicon = _clean(selection.favicon) or None
+                favicon = selection.favicon or None
 
                 results.append(
                     SearchResultItem(
-                        title=title or fetched_url,
-                        url=fetched_url or url,
+                        title=title,
+                        url=url,
                         favicon=favicon,
-                        snippet=snippet or "Snippet not available.",
-                        detail_summary=content or "Content unavailable.",
+                        snippet=snippet,
+                        detail_summary=content,
                     )
                 )
 
@@ -318,12 +283,8 @@ class PageFetchAgent(BaseChatAgent):
 
 
 def create_team():
-    current_utc = datetime.now(timezone.utc)
-    iso_date = current_utc.date().isoformat()
-    human_date = current_utc.strftime("%B %d, %Y")
-
-    router_system_message = f"""
-    You are the **routing planner** for a retrieval assistant. Today's date is {human_date} (UTC {iso_date}).
+    router_system_message = """
+    You are the **routing planner** for a retrieval assistant.
 
     Responsibilities:
     - Inspect the latest user request and decide whether a QUICK_ANSWER, DEEP_DIVE, or CODING route is required.
