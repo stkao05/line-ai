@@ -1,3 +1,4 @@
+import asyncio
 import os
 from urllib.parse import urlparse
 
@@ -70,6 +71,61 @@ async def google_search(query: str, num_results: int) -> list:
             break
 
     return collected
+
+
+async def google_search_many(
+    queries: list[str] | tuple[str, ...], num_results: int
+) -> list[dict]:
+    """Run multiple Serper searches concurrently and return de-duplicated results.
+
+    - Executes searches for all non-empty queries concurrently.
+    - Normalizes and de-duplicates results by URL (first occurrence wins).
+    - Each item mirrors `google_search`'s structure: keys `title`, `link`, `snippet`, `favicon`.
+    """
+
+    # Normalize and filter out empty queries early
+    normalized_queries: list[str] = [
+        q.strip() for q in queries if isinstance(q, str) and q.strip()
+    ]
+    if not normalized_queries:
+        return []
+
+    async def _run(q: str) -> list[dict]:
+        try:
+            return await google_search(q, num_results=num_results)
+        except ValueError:
+            return []
+
+    results_lists = await asyncio.gather(*(_run(q) for q in normalized_queries))
+
+    # Flatten and de-duplicate by normalized URL
+    seen_urls: set[str] = set()
+    aggregated: list[dict] = []
+    for items in results_lists:
+        for item in items:
+            link = item.get("link")
+            if not isinstance(link, str):
+                continue
+            url = link.strip()
+            if not url or url in seen_urls:
+                continue
+
+            title = item.get("title")
+            snippet = item.get("snippet")
+            favicon = item.get("favicon")
+
+            aggregated.append(
+                {
+                    "title": (title.strip() if isinstance(title, str) else url) or url,
+                    "link": url,
+                    "snippet": (snippet or "").strip() or "Snippet not available.",
+                    "favicon": (favicon.strip() if isinstance(favicon, str) else None)
+                    or _build_favicon_url(url),
+                }
+            )
+            seen_urls.add(url)
+
+    return aggregated
 
 
 async def fetch_page(url: str, max_chars: int) -> dict[str, str] | None:

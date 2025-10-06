@@ -13,7 +13,7 @@ from autogen_agentchat.teams import DiGraphBuilder, GraphFlow
 from autogen_core import CancellationToken
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from pydantic import BaseModel
-from tools import fetch_page, google_search
+from tools import fetch_page, google_search_many
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
@@ -153,44 +153,42 @@ class GoogleSearchExecutorAgent(BaseChatAgent):
     ) -> Response:
         plan_message = _latest_message_of_type(messages, ResearchPlanMessage)
 
-        query_text = ""
+        queries: List[str] = []
         if isinstance(plan_message, ResearchPlanMessage):
             for candidate in plan_message.content.queries:
                 candidate_query = candidate.strip()
                 if candidate_query:
-                    query_text = candidate_query
-                    break
+                    queries.append(candidate_query)
+
+        query_text = ", ".join(queries)
 
         candidates: List[SearchCandidateItem] = []
 
-        if query_text:
-            try:
-                raw_results = await google_search(
-                    query=query_text, num_results=self._num_results
-                )
-            except ValueError:
-                raw_results = []
-            else:
-                for item in raw_results:
-                    url = item.get("link")
-                    if not isinstance(url, str) or not url.strip():
-                        continue
+        if queries:
+            raw_items = await google_search_many(queries, num_results=self._num_results)
 
-                    title = item.get("title")
-                    snippet = item.get("snippet")
-                    favicon = item.get("favicon")
+            for item in raw_items:
+                link = item.get("link")
+                title = item.get("title")
+                snippet = item.get("snippet")
+                favicon = item.get("favicon")
 
-                    candidate = SearchCandidateItem(
-                        title=title.strip()
-                        if isinstance(title, str) and title.strip()
-                        else url,
-                        url=url.strip(),
-                        snippet=(snippet or "Snippet not available.").strip(),
-                        favicon=favicon.strip()
-                        if isinstance(favicon, str) and favicon.strip()
-                        else None,
+                candidates.append(
+                    SearchCandidateItem(
+                        title=(
+                            title.strip()
+                            if isinstance(title, str) and title.strip()
+                            else link
+                        ),
+                        url=link,
+                        snippet=(snippet or "").strip() or "Snippet not available.",
+                        favicon=(
+                            favicon.strip()
+                            if isinstance(favicon, str) and favicon.strip()
+                            else None
+                        ),
                     )
-                    candidates.append(candidate)
+                )
 
         structured_message = SearchCandidatesMessage(
             content=SearchCandidates(query=query_text, candidates=candidates),
