@@ -16,6 +16,9 @@ from pydantic import BaseModel
 from tools import fetch_page, google_search
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
 general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
 quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
 coding_model = OpenAIChatCompletionClient(model="gpt-4", api_key=openai_api_key)
@@ -360,8 +363,38 @@ def create_team():
         description="Surface the current date information for deep dive workflows",
     )
 
-    termination = TextMentionTermination(
-        "TERMINATE", sources=["report_agent", "quick_answer_agent", "coding_agent"]
+    quick_system_message = """
+    You are a **rapid response assistant** trusted to deliver concise, high-quality answers.
+
+    - Provide an accurate answer directly using your general knowledge and the conversation context.
+    - If more research is required, acknowledge the limitation rather than fabricating details.
+    - Keep the response focused and actionable. Include brief structure when it improves clarity.
+    - When you finish, append the token `TERMINATE` on a new line to signal completion.
+    """
+
+    quick_answer_agent = AssistantAgent(
+        name="quick_answer_agent",
+        model_client=quick_model,
+        description="Deliver concise answers without external research",
+        system_message=quick_system_message,
+        model_client_stream=True,
+    )
+
+    coding_system_message = """
+    You are a **coding specialist** tasked with producing high-quality software solutions.
+
+    - Read the conversation carefully and provide accurate, efficient code to satisfy the user's goal.
+    - Offer brief explanations for non-trivial decisions and point out potential pitfalls or follow-up steps when appropriate.
+    - Use Markdown code fences with language hints for all significant code snippets.
+    - When you finish, append the token `TERMINATE` on a new line to signal completion.
+    """
+
+    coding_agent = AssistantAgent(
+        name="coding_agent",
+        model_client=coding_model,
+        description="Provide hands-on programming assistance",
+        system_message=coding_system_message,
+        model_client_stream=True,
     )
 
     report_system_message = """
@@ -374,46 +407,16 @@ def create_team():
     - When you finish, append the token `TERMINATE` on a new line to signal completion.
     """
 
-    quick_system_message = """
-    You are a **rapid response assistant** trusted to deliver concise, high-quality answers.
-
-    - Provide an accurate answer directly using your general knowledge and the conversation context.
-    - If more research is required, acknowledge the limitation rather than fabricating details.
-    - Keep the response focused and actionable. Include brief structure when it improves clarity.
-    - When you finish, append the token `TERMINATE` on a new line to signal completion.
-    """
-
-    coding_system_message = """
-    You are a **coding specialist** tasked with producing high-quality software solutions.
-
-    - Read the conversation carefully and provide accurate, efficient code to satisfy the user's goal.
-    - Offer brief explanations for non-trivial decisions and point out potential pitfalls or follow-up steps when appropriate.
-    - Use Markdown code fences with language hints for all significant code snippets.
-    - When you finish, append the token `TERMINATE` on a new line to signal completion.
-    """
-
-    quick_answer_agent = AssistantAgent(
-        name="quick_answer_agent",
-        model_client=quick_model,
-        description="Deliver concise answers without external research",
-        system_message=quick_system_message,
-        model_client_stream=True,
-    )
-
-    coding_agent = AssistantAgent(
-        name="coding_agent",
-        model_client=coding_model,
-        description="Provide hands-on programming assistance",
-        system_message=coding_system_message,
-        model_client_stream=True,
-    )
-
     report_agent = AssistantAgent(
         name="report_agent",
         model_client=general_model,
         description="Generate a summary report based on the research findings",
         system_message=report_system_message,
         model_client_stream=True,
+    )
+
+    termination = TextMentionTermination(
+        "TERMINATE", sources=["report_agent", "quick_answer_agent", "coding_agent"]
     )
 
     builder = DiGraphBuilder()

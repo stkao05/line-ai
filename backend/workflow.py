@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator, Dict, List, Optional, Set
+from typing import AsyncIterator, Callable, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 from agent import (
+    RankedSearchResults,
     RankedSearchResultsMessage,
     ResearchPlan,
     ResearchPlanMessage,
+    RoutePlan,
     RoutePlanMessage,
+    SearchCandidates,
     SearchCandidatesMessage,
+    SearchResult,
     SearchResultMessage,
     create_team,
 )
@@ -37,6 +41,10 @@ from message import (
     TurnStartMessage,
 )
 from pydantic import ValidationError
+
+HandlerReturn = Optional[
+    StreamMessage | List[StreamMessage] | Tuple[StreamMessage, ...]
+]
 
 
 @dataclass
@@ -158,11 +166,13 @@ class EventProcessor:
                 break
 
     async def process_event(self, event: object) -> List[StreamMessage]:
-        handler = self._resolve_handler(event)
-        if handler is None:
+        resolved = self._resolve_handler(event)
+        if resolved is None:
             return []
 
-        result = handler(event)
+        handler, payload = resolved
+
+        result = handler(payload)
         if asyncio.iscoroutine(result):
             result = await result
         if result is None:
@@ -173,24 +183,46 @@ class EventProcessor:
             return list(result)
         return [result]
 
-    def _resolve_handler(self, event: object):
-        event_type = type(event)
+    def _resolve_handler(
+        self, event: object
+    ) -> Optional[Tuple[Callable[[object], HandlerReturn], object]]:
+        direct_handler_map: Dict[type, Callable[[object], HandlerReturn]] = {
+            ModelClientStreamingChunkEvent: self.handle_ModelClientStreamingChunkEvent,
+            BaseTextChatMessage: self.handle_BaseTextChatMessage,
+            TaskResult: self.handle_TaskResult,
+        }
+        structured_handler_map: Dict[
+            type, Callable[[StructuredMessage], HandlerReturn]
+        ] = {
+            RoutePlan: self.handle_RoutePlanMessage,
+            ResearchPlan: self.handle_ResearchPlanMessage,
+            SearchCandidates: self.handle_SearchCandidatesMessage,
+            RankedSearchResults: self.handle_RankedSearchResultsMessage,
+            SearchResult: self.handle_SearchResultMessage,
+        }
 
-        handler = getattr(self, f"handle_{event_type.__name__}", None)
+        handler = self._find_handler_for_type(type(event), direct_handler_map)
         if handler is not None:
-            return handler
+            return handler, event
 
         if isinstance(event, StructuredMessage):
             content = getattr(event, "content", None)
             if content is not None:
-                content_handler = getattr(
-                    self, f"handle_{type(content).__name__}Message", None
+                content_handler = self._find_handler_for_type(
+                    type(content), structured_handler_map
                 )
                 if content_handler is not None:
-                    return content_handler
+                    return content_handler, event
 
-        for cls in event_type.mro()[1:]:
-            handler = getattr(self, f"handle_{cls.__name__}", None)
+        return None
+
+    def _find_handler_for_type(
+        self,
+        event_type: type,
+        mapping: Dict[type, Callable[[object], HandlerReturn]],
+    ) -> Optional[Callable[[object], HandlerReturn]]:
+        for cls in event_type.mro():
+            handler = mapping.get(cls)
             if handler is not None:
                 return handler
         return None
