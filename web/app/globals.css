@@ -64,10 +64,6 @@ body {
   @apply list-decimal space-y-2 pl-6;
 }
 
-.markdown li {
-  @apply text-sm text-zinc-300;
-}
-
 .markdown :not(pre) > code {
   @apply inline-block rounded-md bg-zinc-900 px-1 py-1 text-sm text-emerald-300 border border-zinc-800;
 }
