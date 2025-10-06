@@ -46,10 +46,7 @@ class ConversationState:
     last_used: datetime
 
 
-# Keeps in-memory state per conversation. Safe under single-process lifetime.
 _conversation_states: Dict[str, ConversationState] = {}
-
-
 CONVERSATION_TTL = timedelta(days=1)
 
 
@@ -112,7 +109,7 @@ class ConversationSession:
 class EventProcessor:
     """Dispatch agent events to dedicated handlers for streaming output."""
 
-    def __init__(self) -> None:
+    def __init__(self, stream: AsyncIterator[object], conversation_id: str) -> None:
         self._planning_step_open = False
         self._search_step_open = False
 
@@ -133,9 +130,32 @@ class EventProcessor:
             "coding_agent",
         }
         self.finished = False
+        self._stream = stream
+        self._conversation_id = conversation_id
 
     def set_planning_active(self, active: bool) -> None:
         self._planning_step_open = active
+
+    async def run(self) -> AsyncIterator[StreamMessage]:
+        yield TurnStartMessage(
+            type="turn.start",
+            conversation_id=self._conversation_id,
+        )
+
+        self.set_planning_active(True)
+
+        yield StepStartMessage(
+            type="step.start",
+            title="Planning the appropriate route",
+            description="Evaluating best workflow for this request.",
+        )
+
+        async for event in self._stream:
+            messages = await self.process_event(event)
+            for message in messages:
+                yield message
+            if self.finished:
+                break
 
     async def process_event(self, event: object) -> List[StreamMessage]:
         handler = self._resolve_handler(event)
@@ -541,28 +561,14 @@ async def ask(
         if session.conversation_id is None or session.state is None:
             return
 
-        yield TurnStartMessage(
-            type="turn.start",
-            conversation_id=session.conversation_id,
-        )
+        stream = session.state.team.run_stream(task=user_message)
+        processor = EventProcessor(stream, session.conversation_id)
 
-        processor = EventProcessor()
-        processor.set_planning_active(True)
-
-        yield StepStartMessage(
-            type="step.start",
-            title="Planning the appropriate route",
-            description="Evaluating best workflow for this request.",
-        )
-
-        async for event in session.state.team.run_stream(task=user_message):
-            messages = await processor.process_event(event)
-            for message in messages:
-                yield message
-            if processor.finished:
-                break
+        async for message in processor.run():
+            yield message
 
 
+# for manual testing
 if __name__ == "__main__":
     import asyncio
 
