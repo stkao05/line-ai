@@ -7,7 +7,6 @@ import {
   type AgentWorkflowStatus,
 } from "./agent-workflow-card";
 import { AnswerSection, type TurnReference } from "./answer-section";
-import { EXAMPLE_TURN } from "../components/turn.fixtures";
 
 export type { TurnData } from "../types";
 export type {
@@ -427,7 +426,7 @@ function extractAnswer(messages: StreamMessage[]): {
   return { content, references };
 }
 
-export function Turn({ turn = EXAMPLE_TURN }: { turn?: TurnData }) {
+export function Turn({ turn }: { turn: TurnData }) {
   const { question } = turn;
   const messages = turn.messages ?? [];
   const steps = buildWorkflowSteps(messages);
