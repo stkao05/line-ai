@@ -327,7 +327,7 @@ def create_team():
     google_search_agent = GoogleSearchExecutorAgent(
         name="google_search_agent",
         description="Run Serper searches and emit structured candidate results",
-        num_results=20,
+        num_results=5,
     )
 
     ranking_system_message = """
