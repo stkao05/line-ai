@@ -1,4 +1,18 @@
 @import "tailwindcss";
+@theme {
+  --color-line: #06c755;
+
+  --color-line-50: #e7fdf0;
+  --color-line-100: #c6fadb;
+  --color-line-200: #97f6be;
+  --color-line-300: #68f2a0;
+  --color-line-400: #2ff881;
+  --color-line-500: #06c755;
+  --color-line-600: #06cf58;
+  --color-line-700: #05a847;
+  --color-line-800: #038036;
+  --color-line-900: #025926;
+}
 
 html {
   font-size: 15px;
@@ -10,14 +24,18 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+button {
+  cursor: pointer;
+}
+
 @keyframes glow-text-fast {
   0%,
   100% {
-    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+    filter: drop-shadow(0 0 4px rgba(6, 199, 58, 0.25));
   }
 
   50% {
-    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.7));
+    filter: drop-shadow(0 0 10px, rgba(6, 199, 58, 0.7));
   }
 }
 
@@ -29,12 +47,12 @@ body {
 @keyframes glow-dot-fast {
   0%,
   100% {
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
+    box-shadow: 0 0 6px rgba(6, 199, 58, 0.25);
     transform: scale(0.95);
   }
 
   50% {
-    box-shadow: 0 0 14px rgba(16, 185, 129, 0.7);
+    box-shadow: 0 0 14px rgba(6, 199, 58, 0.7);
     transform: scale(1.08);
   }
 }
@@ -65,7 +83,7 @@ body {
 }
 
 .markdown :not(pre) > code {
-  @apply inline-block rounded-md bg-zinc-900 px-1 py-1 text-sm text-emerald-300 border border-zinc-800;
+  @apply inline-block rounded-md bg-zinc-900 px-1 py-1 text-sm text-line-300 border border-zinc-800;
 }
 
 .markdown pre {

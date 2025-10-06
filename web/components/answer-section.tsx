@@ -32,7 +32,7 @@ export function AnswerSection({ content, references }: AnswerSectionProps) {
             {references.map((reference) => (
               <a
                 key={reference.href}
-                className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-emerald-400/60 hover:text-emerald-200"
+                className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-line-400/60 hover:text-line-200"
                 href={reference.href}
                 target="_blank"
                 rel="noreferrer"

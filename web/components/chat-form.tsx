@@ -24,9 +24,9 @@ export function ChatForm({
       onSubmit={onSubmit}
     >
       <textarea
-        className="w-full resize-none bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+        className="w-full resize-none bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none disabled:cursor-not-allowed"
         name="message"
-        placeholder="Ask anything"
+        placeholder={status === "streaming" ? "Answering..." : "Ask anything"}
         rows={1}
         value={value}
         onChange={onChange}
@@ -36,7 +36,7 @@ export function ChatForm({
       />
       <button
         type="submit"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-line text-white transition-colors hover:bg-line-400 focus:outline-none focus:ring-2 focus:ring-line-400 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:cursor-not-allowed"
         disabled={status === "streaming" || !value.trim()}
         aria-label={status === "streaming" ? "Sending" : "Send message"}
       >

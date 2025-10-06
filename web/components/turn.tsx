@@ -101,7 +101,7 @@ function renderPageList(
                   href={page.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-sm font-medium text-zinc-400 hover:text-emerald-200"
+                  className="text-sm font-medium text-zinc-400 hover:text-line-200"
                 >
                   {title}
                 </a>

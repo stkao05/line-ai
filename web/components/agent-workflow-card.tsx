@@ -25,14 +25,14 @@ function WorkflowTrack({ steps }: WorkflowTrackProps) {
         const isComplete = step.status === "complete";
         const dotClassName = `relative h-3 w-3 rounded-full border transition ${
           isActive
-            ? "border-emerald-300 bg-emerald-300"
+            ? "border-line-300 bg-line-300"
             : isComplete
               ? "border-zinc-500 bg-zinc-500"
               : "border-zinc-600 bg-zinc-800"
         }`;
         const connectorClassName = `mt-1 flex-1 w-px transition-colors ${
           isActive
-            ? "bg-emerald-300/60 animate-pulse"
+            ? "bg-line-300/60 animate-pulse"
             : isComplete
               ? "bg-zinc-600"
               : "bg-zinc-700"
@@ -56,7 +56,7 @@ function WorkflowTrack({ steps }: WorkflowTrackProps) {
             <div className="flex flex-col items-center self-stretch">
               <span className="relative flex h-6 w-6 items-center justify-center">
                 {isActive ? (
-                  <span className="absolute h-6 w-6 rounded-full bg-emerald-400/40 blur-md glow-dot-fast" />
+                  <span className="absolute h-6 w-6 rounded-full bg-line-400/40 blur-md glow-dot-fast" />
                 ) : null}
                 <span className={dotClassName} />
               </span>

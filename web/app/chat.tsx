@@ -134,7 +134,7 @@ function WelcomeScreen({ suggestions, onSelect }: WelcomeScreenProps) {
           <button
             key={suggestion}
             type="button"
-            className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left text-sm text-zinc-200 transition hover:border-emerald-400/60 hover:bg-emerald-500/10 hover:text-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
+            className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left text-sm text-zinc-200 transition hover:border-line-400/60 hover:bg-line-500/10 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-line-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
             onClick={() => onSelect(suggestion)}
           >
             {suggestion}
