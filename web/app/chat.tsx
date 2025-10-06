@@ -13,7 +13,6 @@ import {
 import { Turn } from "../components/turn";
 import { ChatForm } from "../components/chat-form";
 
-const SHOW_MOCK_TURN = false;
 const SUGGESTED_QUESTIONS = [
   "What's new with LINE this year?",
   "Why is sky blue?",
@@ -52,10 +51,6 @@ export function Chat() {
     [input, sendMessage, status]
   );
 
-  const hasTurns = turns.length > 0;
-  const shouldShowMockTurn = SHOW_MOCK_TURN && !hasTurns;
-  const shouldShowWelcomeScreen = !hasTurns && !shouldShowMockTurn;
-
   useEffect(() => {
     const target = scrollTargetRef.current;
     if (!target) {
@@ -80,16 +75,14 @@ export function Chat() {
   return (
     <main className="max-w-[1000px] mx-auto">
       <div className="space-y-4">
-        {hasTurns ? (
+        {turns.length > 0 ? (
           turns.map((turn, index) => <Turn key={index} turn={turn} />)
-        ) : shouldShowMockTurn ? (
-          <Turn />
-        ) : shouldShowWelcomeScreen ? (
+        ) : (
           <WelcomeScreen
             suggestions={SUGGESTED_QUESTIONS}
             onSelect={handleSuggestionSelect}
           />
-        ) : null}
+        )}
         <div ref={scrollTargetRef} aria-hidden className="pb-24 h-px w-full" />
       </div>
       <div className="fixed bottom-6 w-full max-w-[1000px]">
