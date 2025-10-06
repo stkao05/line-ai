@@ -42,3 +42,36 @@ body {
 .glow-dot-fast {
   animation: glow-dot-fast 1s ease-in-out infinite alternate;
 }
+
+.markdown {
+  @apply space-y-4 text-base leading-relaxed text-zinc-200;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  @apply text-lg font-semibold text-zinc-100;
+}
+
+.markdown ul {
+  @apply list-disc space-y-2 pl-6;
+}
+
+.markdown ol {
+  @apply list-decimal space-y-2 pl-6;
+}
+
+.markdown li {
+  @apply text-sm text-zinc-300;
+}
+
+.markdown :not(pre) > code {
+  @apply inline-block rounded-md bg-zinc-900 px-1 py-1 text-sm text-emerald-300 border border-zinc-800;
+}
+
+.markdown pre {
+  @apply overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-sm my-2;
+}
