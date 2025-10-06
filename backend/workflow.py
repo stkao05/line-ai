@@ -264,9 +264,6 @@ class EventProcessor:
             self._answer_step_description = (
                 "Synthesizing findings from external research."
             )
-            messages.extend(
-                self._open_search_step("Preparing deep dive web search queries.")
-            )
 
         if self._planning_step_open:
             messages.append(
@@ -285,14 +282,24 @@ class EventProcessor:
     ) -> List[StreamMessage]:
         self._active_research_plan = event.content
 
-        query = event.content.queries[0]  # TODO: for simplicity only search one
+        queries = [
+            query.strip()
+            for query in event.content.queries
+            if isinstance(query, str) and query.strip()
+        ]
         messages: List[StreamMessage] = []
-        messages.extend(self._open_search_step(f'Searching for "{query}".'))
+
+        if queries:
+            query_text = ", ".join(f'"{q}"' for q in queries)
+        else:
+            query_text = "relevant information"
+
+        messages.extend(self._open_search_step(f"Searching for {query_text}."))
         messages.append(
             StepStatusMessage(
                 type="step.status",
                 title="Running web search",
-                description=f'Searching with "{query}".',
+                description=f"Searching for {query_text}.",
             )
         )
         return messages
