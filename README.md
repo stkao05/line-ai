@@ -1,8 +1,17 @@
 # Line AI
 
-## Overview
+[Live demo](https://line-ai.up.railway.app)
 
-Live demo: https://line-ai.up.railway.app
+Line AI is a lightweight, Perplexity‑style service that uses a multi‑agent workflow to answer user questions. It currently supports:
+
+- Workflow routing and multi‑step execution: depending on the question, an appropriate route is selected. The three supported routes are:
+  - Quick answer: respond directly from model knowledge when sufficient.
+  - Deep dive: use Google Search to gather information and produce a citation‑ready report.
+  - Coding: specialized coding agent for programming tasks.
+
+Assumptions
+
+- Conversation data is not persisted. The backend keeps recent conversation state in memory (1‑day TTL) to support multi‑turn conversations. This limits scope and keeps the project simple.
 
 ## Setup
 
@@ -10,16 +19,18 @@ Live demo: https://line-ai.up.railway.app
 
 - Python 3.10 (matches `backend/environment.yml`).
 - Node.js 18 or newer.
-- API keys for OpenAI (GPT-4o / GPT-4.1) and Serper (Google Search proxy).
+- API keys for OpenAI (GPT‑4o / GPT‑4.1) and Serper (Google Search API proxy).
 
 ### Backend
 
-1. Create and activate a Python environment (conda: `conda env create -f backend/environment.yml`, or venv: `python -m venv .venv && source .venv/bin/activate`).
+1. Create and activate a Python environment:
+   - Conda: `conda env create -f backend/environment.yml && conda activate lineai`
+   - venv: `python -m venv .venv && source .venv/bin/activate`
 2. Install dependencies: `pip install -r backend/requirements.txt`.
 3. Export required environment variables:
-   - `OPENAI_API_KEY`: OpenAI project key with access to GPT-4o and GPT-4.1.
+   - `OPENAI_API_KEY`: OpenAI project key with access to GPT‑4o and GPT‑4.1.
    - `SERPER_API_KEY`: Serper.dev key used for Google Search.
-   - `CORS_ALLOW_ORIGIN`: Front-end origin allowed to call the API.
+   - `CORS_ALLOW_ORIGIN`: Frontend origin allowed to call the API.
 4. Start the API:
 
 ```
@@ -33,34 +44,34 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ### Web App
 
 1. `cd web`.
-2. Copy the example environment file and point it at the API: `cp .env.example .env.local`.
-   - Update `NEXT_PUBLIC_CHAT_BASE_URL` if your back end runs on a different host or port.
+2. Copy the example environment and point it at the API: `cp .env.example .env.local`.
+   - Update `NEXT_PUBLIC_CHAT_BASE_URL` if your backend runs on a different host or port.
 3. Install dependencies: `npm install`.
 4. Launch the dev server: `npm run dev` (defaults to `http://localhost:3000`).
 
 ## Architectural Overview
 
-The system consists of a FastAPI back end that orchestrates an Autogen multi‑agent workflow, and a Next.js front end that streams responses via Server‑Sent Events (SSE).
+The system consists of a FastAPI backend that orchestrates an AutoGen multi‑agent workflow and streams responses, and a Next.js frontend that communicates with the backend via Server‑Sent Events (SSE).
 
 Backend
 
-- Async‑first (`asyncio`) for high concurrency.
-- Multi‑turn conversations: previous conversation context are kept in memory.
-- Workflow routing is implemented with Autogen GraphFlow; details below.
+- Async‑first (`asyncio`) for concurrency.
+- Multi‑turn conversations: previous context is kept in memory with a 1‑day TTL.
+- Workflow routing implemented with AutoGen GraphFlow (details below).
 
 Frontend
 
 - Next.js app with static pre‑rendering.
-- Streams tokens from the API via SSE.
-- OpenAPI schema provides type safety between front end and back end.
+- Streams responses from the API via SSE.
+- OpenAPI schema provides type safety between frontend and backend.
 
 ## Agent Workflow
 
 The agent architecture is route‑based with three paths:
 
-- Quick answer: Answer directly from model knowledge when sufficient.
-- Deep dive: Plan searches, use Serper to gather results, rank and fetch pages, then compose a citation‑ready report.
-- Coding: Specialized coding agent for programming tasks.
+- Quick answer: respond directly from model knowledge when sufficient.
+- Deep dive: plan searches, use Serper to gather results, rank and fetch pages, then compose a citation‑ready report.
+- Coding: specialized coding agent for programming tasks.
 
 ```mermaid
 flowchart LR
@@ -85,44 +96,24 @@ flowchart LR
 
 Agent Overview
 
-- `router_agent`: Chooses the workflow route (`quick_answer`, `deep_dive`, or `coding`).
-- `research_planner_agent`: Designs search queries, ranking budget, and page‑fetch limits for deep dives.
-- `google_search_agent`: Calls Serper to produce candidate search results.
-- `search_rank_agent`: Picks high‑value results and justifies each selection.
-- `page_fetch_agent`: Fetches and normalizes page snippets for citations.
-- `today_date_agent`: Shares the current UTC date so plans stay time‑aware.
-- `quick_answer_agent`: Streams concise answers when external research is unnecessary.
-- `coding_agent`: Produces code and brief explanations for programming tasks.
-- `report_agent`: Writes the comprehensive response and emits the terminating token.
+- `router_agent`: chooses the workflow route (`quick_answer`, `deep_dive`, or `coding`).
+- `research_planner_agent`: designs search queries, ranking budget, and page‑fetch limits for deep dives.
+- `google_search_agent`: calls Serper to produce candidate search results.
+- `search_rank_agent`: picks high‑value results and justifies each selection.
+- `page_fetch_agent`: fetches and normalizes page snippets for citations.
+- `today_date_agent`: provides the current UTC date so searches remain time‑aware.
+- `quick_answer_agent`: streams concise answers when external research is unnecessary.
+- `coding_agent`: produces code and brief explanations for programming tasks.
+- `report_agent`: assembles the final response and emits the terminating token.
 
-## AI Prompt
+## AI‑Assisted Coding
 
-I used AI coding tools (OpenAI Codex for Cursor) for this assignment. _No system-level prompt_ was used during the working of this project.
+I used AI‑assisted coding tools (OpenAI models in Cursor) for this project. No system‑level prompt was used while working on the codebase.
 
-Below are example prompts that illustrate my typical workflow.
-
-_Discuss, review, and iterate_
-
-I start by asking for a high‑level outline and design. Once aligned on the direction, I ask the agent to implement changes in small, verifiable steps (e.g., data model, backend, frontend).
-
-```
-user: I think the current messages are too specific. I’d like to simplify and generalize the message types. Many existing messages could share a single generic type. Here’s a rough outline — am I missing anything important?
-
-agent: ...
-
-user: Looks good—let’s proceed with the backend message type changes.
-
-agent: ...
-
-user: Great, now let’s update the frontend to use the new message types.
-```
-
-_Handling knowledge gaps_
-
-LLMs may have outdated knowledge of tools and frameworks. For example, the OpenAI Codex model has knowledge of Autogen 2.x, whereas the latest Autogen is 7.x. To bridge this gap, I sometimes:
+LLMs can have outdated knowledge of tools and frameworks. For example, some models know AutoGen 0.2 while the latest is 0.7. To bridge this gap, I sometimes:
 
 - Include an LLM‑friendly text export of the relevant docs in context.
-- Point the code agent where the library source code is and let the LLM infer usage.
+- Point the code agent to the library source so it can infer usage.
 
 ```
 I’d like to extend the current agent to add routing: a router agent inspects the user question and selects one of three branches:
@@ -130,5 +121,10 @@ I’d like to extend the current agent to add routing: a router agent inspects t
 - deep dive (web search)
 - coding task
 
-Your Autogen knowledge may be outdated—please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference to implement this or you may find the library source code here `/miniconda3/envs/lineai/lib/python3.10/site-packages/autogen_agentchat`
+Your AutoGen knowledge may be outdated — please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference, or you may find the library source code here: `/miniconda3/envs/lineai/lib/python3.10/site-packages/autogen_agentchat`
 ```
+
+## Future Ideas
+
+- Dynamic workflow graph: the current workflow is fixed with a predetermined path. It would be interesting to generate the graph at runtime.
+- Evaluation loop: for some tasks, a reflection loop (writer + critic) that iterates until criteria are met could improve quality.
