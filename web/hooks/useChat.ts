@@ -17,6 +17,112 @@ type UseChatReturn = {
   cancel: () => void;
 };
 
+type CreateChatStreamOptions = {
+  url: string;
+  appendMessage: (message: StreamMessage) => void;
+  setError: (message: string) => void;
+  setStatus: (status: ChatStatus) => void;
+  onCleanup: (nextStatus: ChatStatus) => void;
+};
+
+type ChatStreamController = {
+  stream: EventSource;
+  cleanup: (nextStatus: ChatStatus) => void;
+};
+
+function createChatStream({
+  url,
+  appendMessage,
+  setError,
+  setStatus,
+  onCleanup,
+}: CreateChatStreamOptions): ChatStreamController {
+  const stream = new EventSource(url);
+
+  function cleanup(nextStatus: ChatStatus) {
+    stream.removeEventListener("message", handleStreamMessage);
+    stream.removeEventListener("end", handleStreamEnd);
+    stream.removeEventListener("error", handleStreamError);
+    stream.close();
+    setStatus(nextStatus);
+    onCleanup(nextStatus);
+  }
+
+  function handleStreamMessage(event: MessageEvent) {
+    try {
+      const parsed = JSON.parse(event.data) as Partial<ChatStreamEnvelope>;
+
+      if (!parsed || parsed.event !== "message") {
+        return;
+      }
+
+      if (!parsed.data) {
+        console.warn("Stream event missing data payload", parsed);
+        return;
+      }
+
+      if (!isStreamMessage(parsed.data)) {
+        console.warn("Unknown stream message type", parsed.data);
+        return;
+      }
+
+      appendMessage(parsed.data);
+    } catch (streamError) {
+      console.error("Failed to parse stream message", streamError);
+      setError("Failed to parse stream message");
+      cleanup("error");
+    }
+  }
+
+  function handleStreamEnd(event: MessageEvent) {
+    try {
+      const payload = JSON.parse(event.data) as ChatDoneEnvelope["data"];
+      if (payload.message && payload.message !== "[DONE]") {
+        console.warn("Unexpected stream end payload", payload);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse stream end payload", parseError);
+      setError("Failed to parse stream end payload");
+      cleanup("error");
+      return;
+    }
+
+    cleanup("ready");
+  }
+
+  function handleStreamError(event: Event) {
+    console.error("Stream error", event);
+
+    if (
+      "data" in event &&
+      typeof (event as MessageEvent).data === "string" &&
+      (event as MessageEvent).data
+    ) {
+      try {
+        const payload = JSON.parse(
+          (event as MessageEvent).data
+        ) as ChatErrorEnvelope["data"];
+        if (payload.error) {
+          setError(payload.error);
+          cleanup("error");
+          return;
+        }
+      } catch (parseError) {
+        console.error("Failed to parse stream error payload", parseError);
+      }
+    }
+
+    setError("Streaming connection failed");
+    cleanup("error");
+  }
+
+  stream.addEventListener("message", handleStreamMessage);
+  stream.addEventListener("end", handleStreamEnd);
+  stream.addEventListener("error", handleStreamError);
+
+  return { stream, cleanup };
+}
+
 function isStreamMessage(value: unknown): value is StreamMessage {
   if (!value || typeof value !== "object") {
     return false;
@@ -76,9 +182,6 @@ export function useChat(): UseChatReturn {
     }
     const streamUrl = `${baseUrl}/chat?${params.toString()}`;
 
-    const stream = new EventSource(streamUrl);
-    streamRef.current = stream;
-
     setTurns((previous) => {
       const next = [...previous, { question, messages: [] }];
       activeTurnIndexRef.current = next.length - 1;
@@ -87,20 +190,7 @@ export function useChat(): UseChatReturn {
     setStatus("streaming");
     setError(null);
 
-    function cleanup(nextStatus: ChatStatus) {
-      stream.removeEventListener("message", handleStreamMessage);
-      stream.removeEventListener("end", handleStreamEnd);
-      stream.removeEventListener("error", handleStreamError);
-      stream.close();
-      if (streamRef.current === stream) {
-        streamRef.current = null;
-      }
-      cleanupRef.current = null;
-      activeTurnIndexRef.current = null;
-      setStatus(nextStatus);
-    }
-
-    function appendMessage(message: StreamMessage) {
+    const appendMessage = (message: StreamMessage) => {
       const turnIndex = activeTurnIndexRef.current;
       if (turnIndex === null) {
         return;
@@ -123,81 +213,33 @@ export function useChat(): UseChatReturn {
         };
         return nextTurns;
       });
-    }
+    };
 
-    function handleStreamMessage(event: MessageEvent) {
-      try {
-        const parsed = JSON.parse(event.data) as Partial<ChatStreamEnvelope>;
+    let cleanupFn: ((nextStatus: ChatStatus) => void) | null = null;
+    let cleanupStream: EventSource | null = null;
 
-        if (!parsed || parsed.event !== "message") {
-          return;
+    const { stream, cleanup } = createChatStream({
+      url: streamUrl,
+      appendMessage,
+      setError: (message) => setError(message),
+      setStatus,
+      onCleanup: (nextStatus) => {
+        void nextStatus;
+        if (streamRef.current === cleanupStream) {
+          streamRef.current = null;
         }
-
-        if (!parsed.data) {
-          console.warn("Stream event missing data payload", parsed);
-          return;
+        if (cleanupRef.current === cleanupFn) {
+          cleanupRef.current = null;
         }
+        activeTurnIndexRef.current = null;
+      },
+    });
 
-        if (!isStreamMessage(parsed.data)) {
-          console.warn("Unknown stream message type", parsed.data);
-          return;
-        }
+    cleanupFn = cleanup;
+    cleanupStream = stream;
 
-        appendMessage(parsed.data);
-      } catch (streamError) {
-        console.error("Failed to parse stream message", streamError);
-        setError("Failed to parse stream message");
-        cleanup("error");
-      }
-    }
-
-    function handleStreamEnd(event: MessageEvent) {
-      try {
-        const payload = JSON.parse(event.data) as ChatDoneEnvelope["data"];
-        if (payload.message && payload.message !== "[DONE]") {
-          console.warn("Unexpected stream end payload", payload);
-        }
-      } catch (parseError) {
-        console.error("Failed to parse stream end payload", parseError);
-        setError("Failed to parse stream end payload");
-        cleanup("error");
-        return;
-      }
-
-      cleanup("ready");
-    }
-
-    function handleStreamError(event: Event) {
-      console.error("Stream error", event);
-
-      if (
-        "data" in event &&
-        typeof (event as MessageEvent).data === "string" &&
-        (event as MessageEvent).data
-      ) {
-        try {
-          const payload = JSON.parse(
-            (event as MessageEvent).data
-          ) as ChatErrorEnvelope["data"];
-          if (payload.error) {
-            setError(payload.error);
-            cleanup("error");
-            return;
-          }
-        } catch (parseError) {
-          console.error("Failed to parse stream error payload", parseError);
-        }
-      }
-
-      setError("Streaming connection failed");
-      cleanup("error");
-    }
-
+    streamRef.current = stream;
     cleanupRef.current = cleanup;
-
-    stream.addEventListener("message", handleStreamMessage);
-    stream.addEventListener("end", handleStreamEnd);
-    stream.addEventListener("error", handleStreamError);
   }, []);
 
   return {
