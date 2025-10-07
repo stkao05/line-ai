@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Line AI",
+  title: "LINE AI",
 };
 
 export default function RootLayout({

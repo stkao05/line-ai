@@ -13,6 +13,8 @@ import {
 import { Turn } from "../components/turn";
 import { ChatForm } from "../components/chat-form";
 
+const DEFAULT_TITLE = "LINE AI";
+
 const SUGGESTED_QUESTIONS = [
   "What's new with LINE this year?",
   "Why is sky blue?",
@@ -59,6 +61,13 @@ export function Chat() {
 
     target.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, status]);
+
+  useEffect(() => {
+    document.title =
+      turns.length === 0
+        ? DEFAULT_TITLE
+        : `${turns[0].question} - ${DEFAULT_TITLE}`;
+  }, [turns]);
 
   const handleSuggestionSelect = useCallback(
     (suggestion: string) => {
