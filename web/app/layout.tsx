@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Line AI",
+  title: "LINE AI",
 };
 
 export default function RootLayout({
@@ -22,7 +22,7 @@ export default function RootLayout({
         <h1>
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
-            className="text-zinc-50 font-bold relative top-4 left-4 cursor-pointer hover:text-line transition-colors"
+            className="text-line font-bold relative top-4 left-4 cursor-pointer hover:text-line-400 transition-colors"
             href="/"
           >
             LINE AI
