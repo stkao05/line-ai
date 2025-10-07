@@ -8,8 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "openapi:dump": "curl --fail --silent ${NEXT_PUBLIC_CHAT_BASE_URL:-http://127.0.0.1:8000}/openapi.json > openapi.json",
-    "types:generate": "npx openapi-typescript openapi.json --output api-types.ts",
-    "types:sync": "npm run openapi:dump && npm run types:generate"
+    "openapi:gen": "openapi-ts"
   },
   "dependencies": {
     "lucide-react": "^0.544.0",
@@ -17,10 +16,12 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.0"
+    "remark-gfm": "^4.0.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@hey-api/openapi-ts": "0.85.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

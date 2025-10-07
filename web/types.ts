@@ -1,16 +1,21 @@
-import type { components } from "./api-types";
+import { z } from "zod";
 
-type Schemas = components["schemas"];
+import {
+  zChatDoneEnvelope,
+  zChatErrorEnvelope,
+  zChatStreamEnvelope,
+  zPage,
+} from "./openapi/zod.gen";
 
-export type PageSummary = Schemas["Page"];
+export type PageSummary = z.infer<typeof zPage>;
 
-export type StreamMessage = Schemas["ChatStreamEnvelope"]["data"];
+export type ChatStreamEnvelope = z.infer<typeof zChatStreamEnvelope>;
 
-export type ChatStreamEnvelope = Schemas["ChatStreamEnvelope"];
+export type ChatErrorEnvelope = z.infer<typeof zChatErrorEnvelope>;
 
-export type ChatErrorEnvelope = Schemas["ChatErrorEnvelope"];
+export type ChatDoneEnvelope = z.infer<typeof zChatDoneEnvelope>;
 
-export type ChatDoneEnvelope = Schemas["ChatDoneEnvelope"];
+export type StreamMessage = ChatStreamEnvelope["data"];
 
 export type ChatSseEvent =
   | ChatStreamEnvelope

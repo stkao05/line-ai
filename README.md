@@ -56,14 +56,15 @@ The system consists of a FastAPI backend that orchestrates an AutoGen multi‑ag
 Backend
 
 - Async‑first (`asyncio`) for concurrency.
-- Multi‑turn conversations: previous context is kept in memory with a 1‑day TTL.
+- The API support [OpenAPI](https://www.openapis.org/) spec, allow typesafe client server interaction.
 - Workflow routing implemented with AutoGen GraphFlow (details below).
+- Multi‑turn conversations: previous context is kept in memory with a 1‑day TTL.
 
 Frontend
 
 - Next.js app with static pre‑rendering.
 - Streams responses from the API via SSE.
-- OpenAPI schema provides type safety between frontend and backend.
+- Use [zod](https://zod.dev/) schema, generated with on backend's OpenAPI spec, for API response validation and typesafty.
 
 ## Agent Workflow
 

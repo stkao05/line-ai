@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ChatDoneEnvelope,
-  ChatErrorEnvelope,
-  ChatStreamEnvelope,
-  StreamMessage,
-  TurnData,
-} from "../types";
+import type { StreamMessage, TurnData } from "../types";
+import { zChatStreamEnvelope } from "../openapi/zod.gen";
 
 type ChatStatus = "ready" | "streaming" | "error";
 
@@ -50,68 +45,21 @@ function createChatStream({
 
   function handleStreamMessage(event: MessageEvent) {
     try {
-      const parsed = JSON.parse(event.data) as Partial<ChatStreamEnvelope>;
-
-      if (!parsed || parsed.event !== "message") {
-        return;
-      }
-
-      if (!parsed.data) {
-        console.warn("Stream event missing data payload", parsed);
-        return;
-      }
-
-      if (!isStreamMessage(parsed.data)) {
-        console.warn("Unknown stream message type", parsed.data);
-        return;
-      }
-
+      const parsed = zChatStreamEnvelope.parse(JSON.parse(event.data));
       appendMessage(parsed.data);
-    } catch (streamError) {
-      console.error("Failed to parse stream message", streamError);
+    } catch (error) {
+      console.error("Failed to parse stream message", error);
       setError("Failed to parse stream message");
       cleanup("error");
     }
   }
 
-  function handleStreamEnd(event: MessageEvent) {
-    try {
-      const payload = JSON.parse(event.data) as ChatDoneEnvelope["data"];
-      if (payload.message && payload.message !== "[DONE]") {
-        console.warn("Unexpected stream end payload", payload);
-      }
-    } catch (parseError) {
-      console.error("Failed to parse stream end payload", parseError);
-      setError("Failed to parse stream end payload");
-      cleanup("error");
-      return;
-    }
-
+  function handleStreamEnd() {
     cleanup("ready");
   }
 
   function handleStreamError(event: Event) {
     console.error("Stream error", event);
-
-    if (
-      "data" in event &&
-      typeof (event as MessageEvent).data === "string" &&
-      (event as MessageEvent).data
-    ) {
-      try {
-        const payload = JSON.parse(
-          (event as MessageEvent).data
-        ) as ChatErrorEnvelope["data"];
-        if (payload.error) {
-          setError(payload.error);
-          cleanup("error");
-          return;
-        }
-      } catch (parseError) {
-        console.error("Failed to parse stream error payload", parseError);
-      }
-    }
-
     setError("Streaming connection failed");
     cleanup("error");
   }
@@ -122,27 +70,6 @@ function createChatStream({
 
   return { stream, cleanup };
 }
-
-function isStreamMessage(value: unknown): value is StreamMessage {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const { type } = value as { type?: unknown };
-  return (
-    type === "turn.start" ||
-    type === "step.start" ||
-    type === "step.status" ||
-    type === "step.end" ||
-    type === "step.fetch.start" ||
-    type === "step.fetch.end" ||
-    type === "step.answer.start" ||
-    type === "step.answer.delta" ||
-    type === "step.answer.end" ||
-    type === "answer"
-  );
-}
-
 export function useChat(): UseChatReturn {
   const [turns, setTurns] = useState<TurnData[]>([]);
   const [status, setStatus] = useState<ChatStatus>("ready");
