@@ -95,17 +95,22 @@ flowchart LR
     classDef side fill:#1f2937,stroke:#3f3f46,color:#e5e7eb;
 ```
 
+This project uses two kinds of agents: LLM‑backed agents and custom program agents.
+
+- LLM‑backed agents use `OpenAIChatCompletionClient` to process messages.
+- Custom program agents (e.g., `today_date_agent`, `page_fetch_agent`) execute predetermined functions.
+
 Agent Overview
 
-- `router_agent`: chooses the workflow route (`quick_answer`, `deep_dive`, or `coding`).
-- `research_planner_agent`: designs search queries, ranking budget, and page‑fetch limits for deep dives.
+- `router_agent (llm)`: chooses the workflow route (`quick_answer`, `deep_dive`, or `coding`).
+- `research_planner_agent (llm)`: designs search queries, ranking budget, and page‑fetch limits for deep dives.
 - `google_search_agent`: calls Serper to produce candidate search results.
-- `search_rank_agent`: picks high‑value results and justifies each selection.
+- `search_rank_agent (llm)`: picks high‑value results and justifies each selection.
 - `page_fetch_agent`: fetches and normalizes page snippets for citations.
 - `today_date_agent`: provides the current UTC date so searches remain time‑aware.
-- `quick_answer_agent`: streams concise answers when external research is unnecessary.
-- `coding_agent`: produces code and brief explanations for programming tasks.
-- `report_agent`: assembles the final response and emits the terminating token.
+- `quick_answer_agent (llm)`: streams concise answers when external research is unnecessary.
+- `coding_agent (llm)`: produces code and brief explanations for programming tasks.
+- `report_agent (llm)`: assembles the final response and emits the terminating token.
 
 ## AI‑Assisted Coding
 
