@@ -94,7 +94,7 @@ export function Chat() {
         )}
         <div ref={scrollTargetRef} aria-hidden className="pb-24 h-px w-full" />
       </div>
-      <div className="fixed bottom-6 w-full max-w-[1000px]">
+      <div className="fixed left-1/2 -translate-x-1/2 px-4 bottom-6 w-full max-w-[1000px]">
         {error ? (
           <div className="mb-3 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}

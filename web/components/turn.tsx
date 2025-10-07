@@ -435,7 +435,7 @@ export function Turn({ turn }: { turn: TurnData }) {
   return (
     <div className="w-auto space-y-8 py-10 text-zinc-100">
       <section className="overflow-hidden rounded-3xl border border-zinc-800 shadow-xl shadow-black/20">
-        <header className="space-y-2 border-b border-zinc-800  px-6 py-5">
+        <header className="space-y-2 border-b border-zinc-800 p-4 md:p-6">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Question
           </p>
@@ -444,7 +444,7 @@ export function Turn({ turn }: { turn: TurnData }) {
           </p>
         </header>
 
-        <div className="space-y-6 px-6 py-7">
+        <div className="space-y-6 p-4 md:p-6">
           <AgentWorkflowCard steps={steps} />
           <AnswerSection content={answerContent} references={references} />
         </div>

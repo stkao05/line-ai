@@ -28,7 +28,7 @@ export default function RootLayout({
             LINE AI
           </a>
         </h1>
-        <main>{children}</main>
+        <main className="px-4">{children}</main>
       </body>
     </html>
   );

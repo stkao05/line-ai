@@ -82,7 +82,7 @@ export function AgentWorkflowCard({ steps }: AgentWorkflowCardProps) {
   const hasWorkflowActivity = visibleSteps.length > 0;
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 md:p-5">
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
           STEPS
