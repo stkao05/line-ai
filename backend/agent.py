@@ -20,7 +20,7 @@ if not openai_api_key:
     raise ValueError("OPENAI_API_KEY not found in environment variables")
 
 general_model = OpenAIChatCompletionClient(model="gpt-4o", api_key=openai_api_key)
-quick_model = OpenAIChatCompletionClient(model="gpt-4o-mini", api_key=openai_api_key)
+quick_model = OpenAIChatCompletionClient(model="gpt-4.1-nano", api_key=openai_api_key)
 coding_model = OpenAIChatCompletionClient(model="gpt-4", api_key=openai_api_key)
 
 
@@ -344,7 +344,7 @@ def create_team():
 
     search_rank_agent = AssistantAgent(
         name="search_rank_agent",
-        model_client=general_model,
+        model_client=quick_model,
         output_content_type=RankedSearchResults,
         description="Select the most relevant websites from the candidate list",
         system_message=ranking_system_message,
