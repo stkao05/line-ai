@@ -127,7 +127,7 @@ I’d like to extend the current agent to add routing: a router agent inspects t
 - deep dive (web search)
 - coding task
 
-Your AutoGen knowledge may be outdated — please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference, or you may find the library source code here: `/miniconda3/envs/lineai/lib/python3.10/site-packages/autogen_agentchat`
+Your AutoGen knowledge may be outdated — please refer to doc/graph-flow.ipynb.txt for the latest GraphFlow reference, or you may find the library source code here: `/miniconda3/envs/lineai/lib/python3.10/site-packages/autogen_agentchat`.
 ```
 
 ## Future Ideas
