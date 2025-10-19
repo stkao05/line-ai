@@ -1,5 +1,8 @@
 # Line AI
 
+<img width="700" alt="screely-1760837304509" src="https://github.com/user-attachments/assets/ab0b2a6f-f5ef-4354-9155-963f9f49a764" />
+
+
 [Live demo](https://line-ai.up.railway.app)
 
 Line AI is a lightweight, Perplexity‑style service that uses a multi‑agent workflow to answer user questions. It currently supports:
